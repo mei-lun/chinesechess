@@ -1,0 +1,21 @@
+<RCC>
+    <qresource prefix="/">
+        <file>images/BA.BMP</file>
+        <file>images/BB.BMP</file>
+        <file>images/BC.BMP</file>
+        <file>images/BK.BMP</file>
+        <file>images/BN.BMP</file>
+        <file>images/BP.BMP</file>
+        <file>images/BR.BMP</file>
+        <file>images/RA.BMP</file>
+        <file>images/RB.BMP</file>
+        <file>images/RC.BMP</file>
+        <file>images/RK.BMP</file>
+        <file>images/RN.BMP</file>
+        <file>images/RP.BMP</file>
+        <file>images/RR.BMP</file>
+        <file>images/BOARD.BMP</file>
+        <file>images/SELECTED.BMP</file>
+        <file>images/XQWIZARD.ICO</file>
+    </qresource>
+</RCC>
