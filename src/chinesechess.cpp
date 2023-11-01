@@ -1,4 +1,5 @@
 #include "chinesechess.h"
+#include "chessmoverule.h"
 
 chinesechess::chinesechess(QWidget* parent)
     : QMainWindow(parent)
@@ -32,8 +33,6 @@ void chinesechess::InitEnv()
     pieceMp.insert(piece.id, piece);
 }
 
-#define BOARD_ROW 10
-#define BOARD_COL 9
 // 棋盘坐标的水平翻转
 void chinesechess::LevelReverse(qint32 &X, qint32 &Y)
 {
@@ -91,23 +90,26 @@ void chinesechess::MovePiece(qint32 gx, qint32 gy)
         bp->pos = QPoint(A2GY(ex), A2GX(ey));
         pieceMp[G2APOS(ex, ey)] = *bp;
         pieceMp.remove(G2APOS(bx, by));
+        if(status != 1){ex = qAbs(ex), ey = qAbs(ey);}
         chess_board[ey][ex] = chess_board[by][bx], chess_board[by][bx] = 0;
     };
     // 棋盘上的i,j对应棋盘的y, x
     qint32 ax = x, ay = y;
     qint32 bx = ay, by = ax;
+    qint32 abx = G2AX(sp->pos.x()), aby = G2AY(sp->pos.y());
+    if(checkMove(aby, abx, by, bx))qDebug()<< "走法合法";
+    else qDebug()<<"非法";
     // 目标位置有棋子
     if(chess_board[x][y])
     {
-        // 先把目标位置棋子置为死亡
+        // 任何时候目标位置都不应该有同颜色棋子
+        if((qint32)(chess_board[x][y] / 10) == (qint32)(chess_board[aby][abx] / 10)){
+            qDebug()<<"error: move illegal";
+            return;
+        }
         move2tar(bx, by, -bx, -by, 2);
-        // 然后把新的棋子移动到这个位置
-        move2tar(G2AX(sp->pos.x()), G2AY(sp->pos.y()), bx, by);
-    }else
-    {
-        // 先把棋子移到目标位置
-        move2tar(G2AX(sp->pos.x()), G2AY(sp->pos.y()), bx, by);
     }
+    move2tar(abx, aby, bx, by);
     // 消除选择框
     sp->status = 0;
 }
