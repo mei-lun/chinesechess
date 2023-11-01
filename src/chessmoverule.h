@@ -5,6 +5,8 @@
 #define BOARD_ROW 10
 #define BOARD_COL 9
 
+#define HALF_ROW 5
+
 // 棋盘资源的像素大小
 #define BOARD_H 576 
 #define BOARD_W 520
@@ -27,7 +29,7 @@
 
 // 通过棋子ID取得棋子颜色
 #define GET_COLOR(PNUM) ((qint32)(PNUM / 10) == 1 ? 'R':'B')
-#define GET_CHESSNAME(PNUM) (chessNum2Name[(qint32)(PNUM % 10)])
+#define GET_CHESSNAME(PNUM) (chessNumName[(qint32)(PNUM % 10)])
 
 // 数组坐标转换成图坐标
 #define A2GX(AP) (RL_MARGE + GRRID_SIZE * (AP) - PIECE_CENT)
@@ -51,6 +53,15 @@
 // 棋盘坐标转换为棋子编号
 #define G2APOS(GX, GY) ((GY) * 10 + (GX))
 
+// 所有的棋子基础编号
+#define CHE 1
+#define MA 2
+#define PAO 3
+#define SHI 4
+#define KING 5
+#define PAO 6
+#define BING 7
+
 struct Piece {
     // 棋子的编号
     qint32 id = 0;
@@ -61,6 +72,9 @@ struct Piece {
     // 棋子的状态,0(初始状态),1(就绪状态),2(死亡状态)
     qint32 status = 0;
 };
+// 双方的将/帅, 用来判断将军
+static Piece* RedKing = nullptr;
+static Piece* BlackKing = nullptr;
 // 当前棋盘数组的方向 1表示标准的红上黑下, 0表示黑上红下
 static qint32 BOARD_FORWARD = 1;
 static qint32 chess_board[BOARD_ROW][BOARD_COL] = {
@@ -115,7 +129,7 @@ static const char chessInGrade[UTIL_BOARD_H][UTIL_BOARD_W] = {
     {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 };
 
-QMap<qint32, char> chessNum2Name = {{1, 'R'}, {2, 'N'}, {3, 'B'}, {4, 'A'}, {5, 'K'}, {6, 'C'}, {7, 'P'}};
+QMap<qint32, char> chessNumName = {{1, 'R'}, {2, 'N'}, {3, 'B'}, {4, 'A'}, {5, 'K'}, {6, 'C'}, {7, 'P'}};
 /* 一下所有招法对应的是在棋盘下方, 如果是棋盘上方则需要翻转 */
 // 将帅的步长, 最多有四种走法上左下右
 static qint32 chessKingRule[4][2] = {{0, -1}, {-1 , 0}, {0, 1}, {1, 0}};
@@ -173,14 +187,16 @@ bool checkChessInGrade(qint32 x, qint32 y)
 }
 
 // 判断棋子是否在自己这边(是否过河)
-bool checkChessInHome(qint32 bx, qint32 by)
+void checkChessInHome(qint32 bx, qint32 by, qint32 ex, qint32 ey, bool &BP, bool &EP)
 {
     // 首先用ID算出原本的位置
     // 如果不等于则是算下界
     if(((qint32)(chess_board[bx][by] / 10) - 1) != BOARD_FORWARD){
-        return bx < (qint32)(BOARD_ROW / 2);
+        BP = bx < HALF_ROW;
+        EP = ex < HALF_ROW;
     }else{ // 如果等于则是算上界
-        return bx >= (qint32)(BOARD_ROW / 2);
+        BP = bx >= HALF_ROW;
+        EP = ex >= HALF_ROW;
     }
 }
 
@@ -208,6 +224,10 @@ bool checkMAMove(qint32 bx, qint32 by, qint32 ex, qint32 ey)
 // 检查象的走法是否合法
 bool checkXIANGMove(qint32 bx, qint32 by, qint32 ex, qint32 ey)
 {
+    // 象的目标点不可过河
+    bool BP = false, EP = false;
+    checkChessInHome(bx, by, ex, ey, BP, EP);
+    if(!EP) return false;
     // 用起点遍历走法列表,如果存在于列表中并且没有压象心则合法,否则非法
     for(qint32 i = 0; i < 4; i++){
         qint32* tr = chessXIANGRule[i];
@@ -222,7 +242,7 @@ bool checkSHIMove(qint32 bx, qint32 by, qint32 ex, qint32 ey)
 {
     for(qint32 i = 0; i < 4; i++){
         qint32* tr = chessSHIRule[i];
-        if((tr[0] + bx == ex) && (tr[1] + by == ey)) return true;
+        if((tr[0] + bx == ex) && (tr[1] + by == ey) && checkChessInGrade(tr[0] + bx, tr[1] + by)) return true;
     }
     return false;
 }
@@ -258,8 +278,10 @@ bool checkPAOMove(qint32 bx, qint32 by, qint32 ex, qint32 ey)
 // 检查兵的走法是否合法
 bool checkBINGMove(qint32 bx, qint32 by, qint32 ex, qint32 ey)
 {
+    bool BP = false, EP = false;
+    checkChessInHome(bx, by, ex, ey, BP, EP);
     // 检查棋子是否没过河,如果没过河则只能X轴移动
-    if(checkChessInHome(bx, by) && by != ey) return false;
+    if(BP && by != ey) return false;
 
     // 如果起点棋子的颜色和棋盘朝向相同则直接用走法数组走棋, 否则要用走法数组乘-1
     qint32 fwp = ((qint32)(chess_board[bx][by] / 10) - 1) == BOARD_FORWARD ? 1 : -1;
@@ -271,12 +293,13 @@ bool checkBINGMove(qint32 bx, qint32 by, qint32 ex, qint32 ey)
 }
 // 如果要通过ai生成一个玩法的所有招法应该有一个招法生成器,生成所有合法的招法
 // 这个是检测招法是否合法
-bool checkMove(qint32 bx, qint32 by, qint32 ex, qint32 ey)
+bool checkMove(qint32 bx, qint32 by, qint32 ex, qint32 ey, qint32 cNum = 0)
 {
     // 先取得起始位置的棋子类型,然后通过类型调用不同的方法
-    qint32 pNum = chess_board[bx][by];
+    qint32 pNum = chess_board[bx][by], checkNum = pNum % 10;
+    if(cNum > 0) checkNum = cNum;
     bool isIllegal = false;
-    switch (chessNum2Name[pNum % 10])
+    switch (chessNumName[checkNum])
     {
     case 'R':// 车
         isIllegal = checkCHEMove(bx, by, ex, ey);
@@ -304,4 +327,53 @@ bool checkMove(qint32 bx, qint32 by, qint32 ex, qint32 ey)
         break;
     }
     return isIllegal;
+}
+
+// 通过一次遍历所有数组找出所有在某一个点的所有走法
+void generateAllMoves(qint32 ax, qint32 bx, QHash<int, QVector<QPair<int, int>>> &allMoves)
+{
+    for(auto it = chessNumName.begin(); it != chessNumName.end(); it++){
+        QVector<QPair<int, int>>* vt = &allMoves[it.key()];
+        for(int i = 0; i < BOARD_ROW; i++){
+            for(int j = 0; j < BOARD_COL; j++){
+                // 检查走法是否合法, 并且目标点没有友军
+                if((qint32)(chess_board[ax][bx]/10) != (qint32)(chess_board[i][j]/10) && 
+                checkMove(i, j, ax, bx, it.key())){
+                    vt->push_back(QPair<int, int>(i, j));
+                }
+            }
+        }
+    }
+}
+
+// 判断是否被将军, 传入盘面最后一次走棋的棋子
+bool checkKingSafe(qint32 ex, qint32 ey)
+{
+    // 根据最后一次走棋的棋子判断相反颜色的被将军
+    Piece* king = (qint32)(chess_board[ex][ey] / 10) == 1 ? BlackKing : RedKing;
+    // 先取到将/帅的坐标
+    qint32 ax = G2AX(king->pos.x()), ay = G2AY(king->pos.y());
+    QHash<int, QVector<QPair<int, int>>> allMoves;
+    generateAllMoves(ay, ax, allMoves);
+    qint32 c = (qint32)(chess_board[ax][ay]/10);
+    // 1.假设将是车/将, 判断能走的位置里面有没有对方的车或者将
+    for(auto it : allMoves[CHE]){
+        auto t = chess_board[it.first][it.second];
+        if(((t%10 == CHE) || (t%10 == KING)) && (qint32)(t/10) != c)return false;
+    }
+    auto Judge = [&](qint32 c){
+        for(auto it : allMoves[c]){
+            auto t = chess_board[it.first][it.second];
+            if(t%10 == c)return false;
+        }
+        return true;
+    };
+    // 2.假设将是炮
+    // 3.假设将是马
+    // 4.假设将是兵
+    for(auto i : {PAO, MA, BING}){
+        if(!Judge(i)) return false;
+    }
+    // 自己移动棋子的时候也要考虑是否被将,如果被将则不能走
+    return true;
 }

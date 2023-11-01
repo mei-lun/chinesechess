@@ -26,5 +26,5 @@ public:
 
 private:
     Ui_chinesechess* ui;
-    QMap<qint32, Piece> pieceMp;
+    QHash<qint32, Piece*> pieceMp;
 };
