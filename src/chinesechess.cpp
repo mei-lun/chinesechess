@@ -33,18 +33,6 @@ void chinesechess::InitEnv()
     pieceMp.insert(piece->id, piece);
 }
 
-// 棋盘坐标的水平翻转
-void chinesechess::LevelReverse(qint32 &X, qint32 &Y)
-{
-    X = X, Y = BOARD_COL - Y;
-}
-
-// 棋盘坐标的垂直翻转
-void chinesechess::PlumbReverse(qint32 &X, qint32 &Y)
-{
-    X = BOARD_ROW - X, Y = Y;
-}
-
 void chinesechess::paintEvent(QPaintEvent *e)
 {
     qDebug()<<" "<<pieceMp.count();
@@ -103,7 +91,10 @@ void chinesechess::MovePiece(qint32 gx, qint32 gy)
     qint32 ax = x, ay = y;
     qint32 bx = ay, by = ax;
     qint32 abx = G2AX(sp->pos.x()), aby = G2AY(sp->pos.y());
-    if(!checkMove(aby, abx, by, bx)){
+    // 如果移动的目标位置会被将军,则也不能移动
+    qint32 tc = 0;
+    qDebug()<<"self is safe? "<<checkKingSafe(aby, abx, tc, false)<<" "<<tc;
+    if(!checkKingSafe(aby, abx, tc, false) || !checkMove(aby, abx, by, bx)){
         qDebug()<<"非法移动";
         return;
     }
@@ -118,8 +109,8 @@ void chinesechess::MovePiece(qint32 gx, qint32 gy)
         move2tar(bx, by, -bx, -by, 2);
     }
     move2tar(abx, aby, bx, by);
-    // 检查是否将军
-    if(!checkKingSafe(by, bx)) qDebug()<<"被将军了!!!";
+    // 检查是否将对方军
+    if(!checkKingSafe(by, bx, tc, true)) qDebug()<<"对方被将军了!!!"<<" "<<tc;
     // 消除选择框
     sp->status = 0;
 }
@@ -141,8 +132,10 @@ void chinesechess::mousePressEvent(QMouseEvent *event)
     }
     else
     {   
-        qDebug()<<"other event";
-        // update();
+        qDebug()<<"cancel select";
+        // 取消选择框
+        pieceMp[SELECT_MAP_ID]->status = 0;
+        update();
         event->ignore();
     }
 }
