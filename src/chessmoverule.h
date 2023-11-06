@@ -26,6 +26,8 @@
 */
 // 棋盘格子的像素大小
 #define GRRID_SIZE 57
+// 棋局的先手一方的颜色,固定红色先走
+#define BEGIN_ROLE 1
 
 // 通过棋子ID取得棋子颜色
 #define GET_COLOR(PNUM) ((qint32)(PNUM / 10) == 1 ? 'R':'B')
@@ -38,8 +40,14 @@
 #define G2AX(X) ((qint32)((X - RL_MARGE + PIECE_CENT) / GRRID_SIZE))
 #define G2AY(Y) ((qint32)((Y - UD_MARGE + PIECE_CENT) / GRRID_SIZE))
 
+// 根据棋子的ID获取棋子的颜色
+#define GETPIECECOLOR(X, Y) ((qint32)(chess_board[X][Y]/10))
+
 // 选择图标在MAP中的索引
 #define SELECT_MAP_ID -1
+
+// 死亡棋子的坐标倍数
+#define DIE_PIECE_NUM (-10)
 
 // 资源文件通用前缀
 #define RES_HEAD ":/images/"
@@ -51,7 +59,7 @@
 // 判断棋子的状态
 #define PIECE_IS_LIVE(ST) (ST == 1)
 // 棋盘坐标转换为棋子编号
-#define G2APOS(GX, GY) ((GY) * 10 + (GX))
+#define G2APOS(GX, GY) ((GX) * 10 + (GY))
 
 // 所有的棋子基础编号
 #define CHE 1
@@ -62,10 +70,12 @@
 #define PAO 6
 #define BING 7
 
+qint32 menuHeight = 0;
+
 bool checkMove(qint32, qint32, qint32, qint32, qint32);
 struct Piece {
     // 棋子的编号
-    qint32 id = 0;
+    qint32 id = 0, cid;
     // 棋子当前的坐标
     QPoint pos;
     // 棋子的像素图
@@ -78,6 +88,7 @@ static Piece* RedKing = nullptr;
 static Piece* BlackKing = nullptr;
 // 当前棋盘数组的方向 1表示标准的红上黑下, 0表示黑上红下
 static qint32 BOARD_FORWARD = 1;
+
 static qint32 chess_board[BOARD_ROW][BOARD_COL] = {
                                         {11, 12, 13, 14, 15, 14, 13, 12, 11},
                                         {0,   0,  0,  0,  0,  0,  0,  0,  0},
@@ -149,16 +160,23 @@ static qint32 chessXIANGBANRule[4][2] = {{-1, -1}, {1, -1}, {-1, 1}, {1, 1}};
 // 兵的步长, 最多三种走法还要判断是否过河和颜色 进1, 平左, 平右
 static qint32 chessBINGRule[3][2] = {{-1, 0}, {0 , -1}, {0, 1}};
 
-// 棋盘坐标的水平翻转
-void levelReverse(qint32 &x, qint32 &y)
+// 棋盘坐标的水平翻转, 像素的X, Y和数组的X, Y是相反的
+void levelReverse(qint32 &px, qint32 &py)
 {
-    x = x, x = BOARD_COL - x;
+    // 先将像素坐标标准化,转换为数组坐标,再通过标准的数组坐标, 翻转, 再转换为标准像素坐标
+    qint32 ax = G2AX(py), ay = G2AY(px);
+    // 翻转 这里加一的原因是数组下标从0开始算,棋盘行列是从1开始算
+    ax = ax, ay = BOARD_COL - (ay + 1);
+    // 还原
+    px = A2GX(ay), py = A2GY(ax);
 }
 
 // 棋盘坐标的垂直翻转
-void plumbReverse(qint32 &x, qint32 &y)
+void plumbReverse(qint32 &px, qint32 &py)
 {
-    x = BOARD_ROW - x, y = y;
+    qint32 ax = G2AX(py), ay = G2AY(px);
+    ax = BOARD_ROW - (ax + 1), ay = ay;
+    px = A2GX(ay), py = A2GY(ax);
 }
 
 // 判断当前点和目标点中间是否有棋子(给炮和车用), 如果不存在则返回false
@@ -199,7 +217,7 @@ bool checkChessInGrade(qint32 x, qint32 y)
     return false;
 }
 
-// 判断棋子是否在自己这边(是否过河)
+// 判断棋子是否在自己这边(是否过河),BP(起点开始算), EP(终点开始算)
 void checkChessInHome(qint32 bx, qint32 by, qint32 ex, qint32 ey, bool &BP, bool &EP)
 {
     // 首先用ID算出原本的位置
@@ -296,10 +314,13 @@ bool checkBINGMove(qint32 bx, qint32 by, qint32 ex, qint32 ey)
     bool BP = false, EP = false;
     checkChessInHome(bx, by, ex, ey, BP, EP);
     // 检查棋子是否没过河,如果没过河则只能X轴移动
-    if(BP && by != ey) return false;
+    if(!BP && by != ey) return false;
 
     // 如果起点棋子的颜色和棋盘朝向相同则直接用走法数组走棋, 否则要用走法数组乘-1
-    qint32 fwp = ((qint32)(chess_board[bx][by] / 10) - 1) == BOARD_FORWARD ? 1 : -1;
+    // 这里不要用变量的棋盘朝向,棋盘翻转并不会导致棋子的坐标位置发生变化
+    // 所以这里的方向固定是红上黑下
+    const qint32 DEFAULT_FORWARD = 1;
+    qint32 fwp = ((qint32)(chess_board[bx][by] / 10) - 1) == DEFAULT_FORWARD ? 1 : -1;
     for(qint32 i = 0; i < 3; i++){
         qint32* tr = chessBINGRule[i];
         if((tr[0] * fwp + bx == ex) && (tr[1] * fwp + by == ey)) return true;
@@ -308,7 +329,7 @@ bool checkBINGMove(qint32 bx, qint32 by, qint32 ex, qint32 ey)
 }
 
 // 通过一次遍历所有数组找出所有在某一个点的所有走法
-void generateAllMoves(qint32 ax, qint32 bx, QHash<int, QVector<QPair<int, int>>> &allMoves)
+void generateAllMoves(qint32 ax, qint32 ay, QHash<int, QVector<QPair<int, int>>> &allMoves)
 {
     for(auto it = chessNumName.begin(); it != chessNumName.end(); it++){
         QVector<QPair<int, int>>* vt = &allMoves[it.key()];
@@ -317,8 +338,7 @@ void generateAllMoves(qint32 ax, qint32 bx, QHash<int, QVector<QPair<int, int>>>
                 // 检查走法是否合法, 并且目标点没有友军
                 /* 这里反向检测用起始点到终点的判断,会让炮漏算走法(中间没有子的情况,因为炮在中间没有子的时候不能移动到目标有子的位置)
                     但是不影响,因为在判断将军的时候中间没有子的炮是必不能将军的*/
-                if((qint32)(chess_board[ax][bx]/10) != (qint32)(chess_board[i][j]/10) && 
-                checkMove(i, j, ax, bx, it.key())){
+                if(GETPIECECOLOR(ax, ay) != GETPIECECOLOR(i, j) && checkMove(i, j, ax, ay, it.key())){
                     vt->push_back(QPair<int, int>(i, j));
                 }
             }
@@ -327,15 +347,17 @@ void generateAllMoves(qint32 ax, qint32 bx, QHash<int, QVector<QPair<int, int>>>
 }
 
 // 判断是否被将军, 传入盘面最后一次走棋的棋子
-bool checkKingSafe(qint32 ex, qint32 ey, int &tc, bool tg = true)
+bool checkKingSafe(qint32 chessNum, int &tc, bool tg = true)
 {
     // 根据最后一次走棋的棋子判断相反颜色的被将军
-    Piece* king = (qint32)(chess_board[ex][ey] / 10) == 1 ? (tg?BlackKing:RedKing) : (tg?RedKing:BlackKing);
+    Piece* king = (qint32)(chessNum / 10) == 1 ? (tg?BlackKing:RedKing) : (tg?RedKing:BlackKing);
     // 先取到将/帅的坐标
     qint32 ax = G2AX(king->pos.x()), ay = G2AY(king->pos.y());
+    // 图坐标和数组坐标需要互换
+    qSwap(ax, ay);
     QHash<int, QVector<QPair<int, int>>> allMoves;
-    generateAllMoves(ay, ax, allMoves);
-    qint32 c = (qint32)(chess_board[ax][ay]/10);
+    generateAllMoves(ax, ay, allMoves);
+    qint32 c = GETPIECECOLOR(ax, ay);
     // 1.假设将是车/将, 判断能走的位置里面有没有对方的车或者将
     for(auto it : allMoves[CHE]){
         auto t = chess_board[it.first][it.second];
