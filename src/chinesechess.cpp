@@ -140,10 +140,10 @@ bool chinesechess::MovePiece(qint32 abx, qint32 aby, qint32 x, qint32 y, qint32 
     // 棋盘上的i,j对应棋盘的x, y
     qint32 bx = x, by = y;
     // 记录被什么棋子将军了
-    qDebug()<<"begin self is safe? "<<checkKingSafe(chess_board[aby][abx], tc, false)<<" "<<tc;
-    qDebug()<<"end self is safe? "<<checkKingSafe(chess_board[aby][abx], tc, false)<<" "<<tc;
+    qDebug()<<"begin self is safe? "<<checkKingSafe(chess_board[abx][aby], tc, false)<<" "<<tc;
+    qDebug()<<"end self is safe? "<<checkKingSafe(chess_board[x][y], tc, false)<<" "<<tc;
     // 每次走棋的时候要检查自己是否被将军,如果自己被将军了必须得应将
-    if(!checkKingSafe(chess_board[aby][abx], tc, false)){
+    if(!checkKingSafe(chess_board[abx][aby], tc, false)){
         updateTitleTips("被将军了,必须应将");
         return false;
     }
@@ -153,7 +153,7 @@ bool chinesechess::MovePiece(qint32 abx, qint32 aby, qint32 x, qint32 y, qint32 
     //     return false;
     // }
     // 检查是否将对方军
-    if(!checkKingSafe(chess_board[by][bx], tc, true)) updateTitleTips("对方被将军了!!!");
+    if(!checkKingSafe(chess_board[bx][by], tc, true)) updateTitleTips("对方被将军了!!!");
     return true;
 }
 
@@ -210,7 +210,7 @@ bool chinesechess::SelectMoveEvent(qint32 px, qint32 py)
         mStep.push_back(new PieceMoveStep(QPoint(abx, aby), QPoint(x, y), chess_board[x][y]));
         // 如果移动失败了,则需要判断是谁被将军了,如果自己移动自己被将军则需要回退,如果自己移动,对方将军则正常进行走棋,让对方解棋
         qint32 tc = 0;
-        if(!MovePiece(abx, aby, y, x, tc)){
+        if(!MovePiece(abx, aby, x, y, tc)){
             // 我走棋我被对方将军了,则回退重新走棋
             if(curRole != (qint32)(tc/10)){
                 // 取到栈顶的步骤,进行强制回退操作
