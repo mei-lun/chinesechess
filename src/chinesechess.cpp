@@ -1,5 +1,6 @@
 #include "chinesechess.h"
 #include "chessmoverule.h"
+#include <QTimer>
 
 chinesechess::chinesechess(QWidget* parent)
     : QMainWindow(parent)
@@ -10,6 +11,17 @@ chinesechess::chinesechess(QWidget* parent)
     InitEnv();
     DrawChessBoard();
     SetWindowStyle();   // 设置窗体属性
+///////////////////////////////////////////////
+    timer.setInterval(2000);
+    QObject::connect(&timer, &QTimer::timeout,[&](){
+        if(chessNetwork){
+            chessNetwork->SendMsg();
+            QString msg;
+            chessNetwork->PullMsg(msg);
+            if(msg != nullptr) qDebug()<<"top: "<<msg;
+        }
+    });
+    timer.start();
 }
 
 chinesechess::~chinesechess()
@@ -44,6 +56,9 @@ void chinesechess::InitEnv()
 
     // 开局由谁先走就先push一个对方的空走法进去,避免后续判空
     mStep.push_back(new PieceMoveStep(QPoint(0, 0), QPoint(0, 0), (BEGIN_ROLE<<1) * 10));
+
+    addrport.addr = "127.0.0.1";
+    addrport.port = 58830;
 }
 
 void chinesechess::SelectPiece(qint32 x, qint32 y)
@@ -155,6 +170,62 @@ void chinesechess::BackLastStep()
     chessPieces->update();
 }
 
+// 这个函数只接收翻转之后变成默认的坐标
+bool chinesechess::SelectMoveEvent(qint32 px, qint32 py)
+{     
+    qint32 x = G2AX(px); qint32 y = G2AY(py);
+    qSwap(x, y);
+    qDebug()<< "moveP: x"<< x <<" y:"<< y;
+    qint32 curRole = 0;
+    auto curRound = [&](qint32 cx, qint32 cy)->bool{
+        // 当玩家走棋的时候判断现在是不是他的回合,如果不是他的回合则不能操作
+        curRole = GETPIECECOLOR(cx, cy); // 当前走棋的角色是谁
+        if(!mStep.isEmpty()){
+            // 当前走棋的人必须要和顶部记录的角色不同否则不是他的回合
+            auto lastStep = mStep.back();
+            if(curRole == (qint32)(lastStep->chessNum/10)){
+                updateTitleTips("不是你的回合!!!");
+                return false;
+            }
+        }
+        return true;
+    };
+    if(!PIECE_IS_LIVE(pieceMp[SELECT_MAP_ID]->status)){
+        // 判断当前回合该谁走棋,不是自己的回合不能选
+        if(!curRound(x, y)) return false;
+        SelectPiece(x, y);
+    }else{
+        Piece* sp = pieceMp[SELECT_MAP_ID];
+        qint32 abx = G2AX(sp->pos.x()), aby = G2AY(sp->pos.y());
+        // 图到数组是相反的
+        qSwap(abx, aby);
+        // 如果不是自己的回合则不能走棋
+        if(!curRound(abx, aby)) return false;
+        // 先尝试走,如果不行则返回,如果走棋失败再回退
+        if(!TryMovePiece(abx, aby, x, y)){
+            updateTitleTips("走棋失败,请重新下棋");
+            return false;
+        }
+        // 如果可以走则加入到步骤记录器
+        mStep.push_back(new PieceMoveStep(QPoint(abx, aby), QPoint(x, y), chess_board[x][y]));
+        // 如果移动失败了,则需要判断是谁被将军了,如果自己移动自己被将军则需要回退,如果自己移动,对方将军则正常进行走棋,让对方解棋
+        qint32 tc = 0;
+        if(!MovePiece(abx, aby, y, x, tc)){
+            // 我走棋我被对方将军了,则回退重新走棋
+            if(curRole != (qint32)(tc/10)){
+                // 取到栈顶的步骤,进行强制回退操作
+                updateTitleTips("步骤非法, 请重走");
+                BackLastStep();
+            }
+        }
+        // 消除选择框
+        sp->status = 0;
+    }
+    chessPieces->update(); // 更新画布
+    setWindowTitle(titleTips);
+    return true;
+}
+
 void chinesechess::mousePressEvent(QMouseEvent *event)
 {
     updateTitleTips("当前是我的回合");
@@ -164,58 +235,9 @@ void chinesechess::mousePressEvent(QMouseEvent *event)
         // 如果棋盘是反向的则需要翻转坐标
         if(!BOARD_FORWARD){
             plumbReverse(px, py);
-        }        
-        qint32 x = G2AX(px); qint32 y = G2AY(py);
-        qSwap(x, y);
-        qDebug()<< "moveP: x"<< x <<" y:"<< y;
-        qint32 curRole = 0;
-        auto curRound = [&](qint32 cx, qint32 cy)->bool{
-            // 当玩家走棋的时候判断现在是不是他的回合,如果不是他的回合则不能操作
-            curRole = GETPIECECOLOR(cx, cy); // 当前走棋的角色是谁
-            if(!mStep.isEmpty()){
-                // 当前走棋的人必须要和顶部记录的角色不同否则不是他的回合
-                auto lastStep = mStep.back();
-                if(curRole == (qint32)(lastStep->chessNum/10)){
-                    updateTitleTips("不是你的回合!!!");
-                    return false;
-                }
-            }
-            return true;
-        };
-        if(!PIECE_IS_LIVE(pieceMp[SELECT_MAP_ID]->status)){
-            // 判断当前回合该谁走棋,不是自己的回合不能选
-            if(!curRound(x, y)) return;
-            SelectPiece(x, y);
-        }else{
-            Piece* sp = pieceMp[SELECT_MAP_ID];
-            qint32 abx = G2AX(sp->pos.x()), aby = G2AY(sp->pos.y());
-            // 图到数组是相反的
-            qSwap(abx, aby);
-            // 如果不是自己的回合则不能走棋
-            if(!curRound(abx, aby)) return;
-            // 先尝试走,如果不行则返回,如果走棋失败再回退
-            if(!TryMovePiece(abx, aby, x, y)){
-                updateTitleTips("走棋失败,请重新下棋");
-                return;
-            }
-            // 如果可以走则加入到步骤记录器
-            mStep.push_back(new PieceMoveStep(QPoint(abx, aby), QPoint(x, y), chess_board[x][y]));
-            // 如果移动失败了,则需要判断是谁被将军了,如果自己移动自己被将军则需要回退,如果自己移动,对方将军则正常进行走棋,让对方解棋
-            qint32 tc = 0;
-            if(!MovePiece(abx, aby, y, x, tc)){
-                // 我走棋我被对方将军了,则回退重新走棋
-                if(curRole != (qint32)(tc/10)){
-                    // 取到栈顶的步骤,进行强制回退操作
-                    updateTitleTips("步骤非法, 请重走");
-                    BackLastStep();
-                }
-            }
-            // 消除选择框
-            sp->status = 0;
         }
-        chessPieces->update(); // 更新画布
+        SelectMoveEvent(px, py);
         event->accept();
-        setWindowTitle(titleTips);
     }
     else{   
         // 取消选择框
@@ -243,6 +265,96 @@ void chinesechess::AddWindowModule()
     backStep = new QAction(tr("&回撤"), this);
     connect(backStep, &QAction::triggered, this, &chinesechess::BackLastStep);
     chessMenu->addAction(backStep);
+    initServer = new QAction(tr("&打开服务器模式"), this);
+    connect(initServer, &QAction::triggered, this, &chinesechess::InitServer);
+    chessMenu->addAction(initServer);
+    initClient = new QAction(tr("&打开客户端模式"), this);
+    connect(initClient, &QAction::triggered, this, &chinesechess::InitClient);
+    chessMenu->addAction(initClient);
+}
+
+void chinesechess::InitServer()
+{
+    chessNetwork = new ChessNetwork(addrport, [&](qint32 etype){
+        onNetworkEvent(etype);
+    });
+    chessNetwork->InitServer();
+}
+
+// 打包需要同步的数据,我们需要同步的数据有,chess_board棋盘数组, 
+// pieceMp(这个列表需要同步最后一次走棋和被选择的棋子), 
+// mStep所有的走棋步骤
+//全局变量有
+// 先把要打包的数据序列化成字节流
+void chinesechess::packSendData()
+{
+    QByteArray data;
+    QDataStream stream(&data,QIODevice::WriteOnly);
+    // chess_board
+    for(int i = 0; i < BOARD_ROW; i++){
+        for(int j = 0; j < BOARD_COL; j++){
+          stream<<chess_board[i][j];  
+        }
+    }
+    // pieceMp
+    stream<<pieceMp.size();
+    for(const auto &pair : pieceMp.toStdMap()){
+        stream<<pair.first<<*pair.second;
+    }
+    // mStep
+    stream<<mStep.size();
+    for(auto it : mStep){
+        stream<<*it;
+    }
+}
+
+void chinesechess::unPackSendData()
+{
+    qint32 c_board[BOARD_ROW][BOARD_COL];
+    QMap<qint32, Piece*> bpMp;
+    QVector<PieceMoveStep*> bpMs;
+    QByteArray arrayData, data;
+    QDataStream stream(&data, QIODevice::ReadOnly);
+    // chess_board
+    for(qint32 i = 0; i < BOARD_ROW; i++){
+        for(qint32 j = 0; j < BOARD_COL; j++){
+          stream>>c_board[i][j];  
+        }
+    }
+    // pieceMp
+    qint32 bpMpSize = 0;
+    stream>>bpMpSize;
+    for(qint32 i = 0; i < bpMpSize; i++){
+        qint32 key; Piece p;
+        stream<< key << p;
+        bpMp[key] = new Piece(p);
+    }
+    // mStep
+    qint32 bpMsSize = 0;
+    stream>>bpMsSize;
+    for(qint32 i = 0; i < bpMsSize; i++){
+        PieceMoveStep p;
+        stream<< p;
+        bpMs.push_back(new PieceMoveStep(p));
+    }
+}
+
+void chinesechess::onNetworkEvent(qint32 etype)
+{
+    // 回调类型1是从网络模块来的,通知上层有新的客户端连进来,需要给客户端同步棋盘数据
+    if(etype == 1){
+
+    }else{
+        qDebug()<<"unkown etype: "<< etype;
+    }
+}
+
+void chinesechess::InitClient()
+{
+    chessNetwork = new ChessNetwork(addrport, [&](qint32 etype){
+        onNetworkEvent(etype);
+    });
+    chessNetwork->InitClient();
 }
 
 // 翻转棋盘显示

@@ -1,4 +1,5 @@
 QT += core gui widgets
+QT += network
 
 CONFIG += c++17
 VERSION = 1.0.0.100
