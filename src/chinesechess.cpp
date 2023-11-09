@@ -58,8 +58,15 @@ void chinesechess::InitEnv()
     // 开局由谁先走就先push一个对方的空走法进去,避免后续判空
     mStep.push_back(new PieceMoveStep(QPoint(0, 0), QPoint(0, 0), (BEGIN_ROLE<<1) * 10));
 
-    addrport.addr = "127.0.0.1";
-    addrport.port = 58830;
+    QSettings settings("./ChessNetwork.ini", QSettings::IniFormat);
+    QString addr = settings.value("addr").toString();
+    qint32 port = settings.value("port").toInt();
+    if(addr == nullptr || !port){
+        settings.setValue("addr", "127.0.0.1");
+        settings.setValue("port", 58830);
+    }
+    addrport.addr = settings.value("addr").toString();
+    addrport.port =  settings.value("port").toInt();
 }
 
 void chinesechess::SelectPiece(qint32 x, qint32 y)
