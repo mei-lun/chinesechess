@@ -70,6 +70,7 @@
 #define PAO 6
 #define BING 7
 
+// 菜单栏的高度
 qint32 menuHeight = 0;
 
 bool checkMove(qint32, qint32, qint32, qint32, qint32);
@@ -209,8 +210,7 @@ bool checkHavePiece(qint32 bx, qint32 by, qint32 ex, qint32 ey, qint32 &cc)
         {
             if(chess_board[i][by]) cc++;
         }
-    }
-    else{
+    }else{
         // 如果行列没有一个相同,那么走法也是非法的
         return true;
     }

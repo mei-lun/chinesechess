@@ -3,6 +3,7 @@
 #include <QTcpServer>
 #include <QObject>
 #include <QtNetwork>
+#include "chessdefine.h"
 
 class TcpSocket : public QTcpSocket
 {
@@ -23,7 +24,7 @@ public:
         auto t = this->readAll();
         recvMsg.push_back(t);
         // 有消息过来就要通知上层来读
-        func(2);
+        func(EVENT_TYPE::NETWORK_RECEIVE_NEW_MESSAGE);
         // qDebug()<<"form server: "<<recvMsg.back().data();
     }
     void GetMsg(QByteArray &msg){

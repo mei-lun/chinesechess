@@ -26,7 +26,7 @@ bool ChessNetwork::InitServer()
 void ChessNetwork::onClientConnect(TcpSocket *socket)
 {
     m_tcpSocket = socket;
-    cbfunc(1);
+    cbfunc(EVENT_TYPE::NEW_CLIENT_CONNECT);
 }
 
 bool ChessNetwork::InitClient()
@@ -73,5 +73,4 @@ void TcpServer::incomingConnection(qintptr socketDescriptor)
 TcpServer::TcpServer(std::function<void(TcpSocket*)> f1, std::function<void(qint32)> f2){
     func = f1;
     cbfunc = f2;
-    qDebug()<<"hello";
 }

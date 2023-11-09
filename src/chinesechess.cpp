@@ -184,7 +184,10 @@ bool chinesechess::SelectMoveEvent(qint32 px, qint32 py)
         if(!mStep.isEmpty()){
             // 当前走棋的人必须要和顶部记录的角色不同否则不是他的回合
             auto lastStep = mStep.back();
-            if(curRole == (qint32)(lastStep->chessNum/10)){
+            // 判断现在该哪个颜色的走棋,如果要区分角色,那么就要判断当前网络角色是什么颜色的
+            qint32 lastRole = (qint32)(lastStep->chessNum/10);
+            // 当前走棋的人不可一次走两步,同一个角色也不能同时走两步
+            if(curRole == lastRole || (curNetRole > 0 && curNetRole == lastRole)){
                 updateTitleTips("不是你的回合!!!");
                 return false;
             }
@@ -283,6 +286,8 @@ void chinesechess::InitServer()
         onNetworkEvent(etype);
     });
     chessNetwork->InitServer();
+    // 联网下棋只是一个功能不需要搞太复杂,服务器默认红棋,客户端默认黑棋
+    curNetRole = 1;
 }
 
 // 打包需要同步的数据,我们需要同步的数据有,chess_board棋盘数组, 
@@ -384,9 +389,9 @@ void chinesechess::receivePackData()
 void chinesechess::onNetworkEvent(qint32 etype)
 {
     // 回调类型1是从网络模块来的,通知上层有新的客户端连进来,需要给客户端同步棋盘数据
-    if(etype == 1){
+    if(etype == EVENT_TYPE::NEW_CLIENT_CONNECT){
         sendPackData();
-    }else if(etype == 2){ // 从最下层的socket回调上来的,表示套接字有新的消息过来
+    }else if(etype == EVENT_TYPE::NETWORK_RECEIVE_NEW_MESSAGE){ // 从最下层的socket回调上来的,表示套接字有新的消息过来
         receivePackData();
         // 接受完数据之后,需要刷新棋子画布
         updateTitleTips("当前是我的回合");
@@ -402,6 +407,7 @@ void chinesechess::InitClient()
         onNetworkEvent(etype);
     });
     chessNetwork->InitClient();
+    curNetRole = 2;
 }
 
 // 翻转棋盘显示

@@ -74,6 +74,8 @@ public:
     QQueue<QString> msgQue;
     AddrPort addrport;
     QTimer timer;
+    // 大于0的时候玩家当前的角色是执红棋还是黑棋(红就是1, 黑就是2),小于0的时候就是单机模式,不分红黑
+    qint32 curNetRole = -1;
 
 private:
     Ui_chinesechess* ui;
