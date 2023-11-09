@@ -26,6 +26,9 @@ struct PieceMoveStep{
         stream>>p.beginPos>>p.endPos>>p.chessNum;
         return stream;
     }
+    void update(const PieceMoveStep &p){
+        beginPos = p.beginPos, endPos = p.endPos, chessNum = p.chessNum;
+    }
 };
 class chessBoardLabel : public QLabel
 {
@@ -57,8 +60,12 @@ public:
     void InitClient();
     void updateTitleTips(QString info);
     void onNetworkEvent(qint32 etype);
-    void packSendData();
-    void unPackSendData();
+    void sendPackData();
+    void receivePackData();
+    void packSendData(QByteArray &data);
+    void unPackSendData(QByteArray &data);
+    void updatePieceMap(qint32 k, Piece p);
+    void updatePieceMapStep(qint32 i, PieceMoveStep p);
     QLabel *chessBoard;
     chessBoardLabel *chessPieces;
     QVector<PieceMoveStep*> mStep;

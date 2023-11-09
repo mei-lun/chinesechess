@@ -12,16 +12,16 @@ chinesechess::chinesechess(QWidget* parent)
     DrawChessBoard();
     SetWindowStyle();   // 设置窗体属性
 ///////////////////////////////////////////////
-    timer.setInterval(2000);
-    QObject::connect(&timer, &QTimer::timeout,[&](){
-        if(chessNetwork){
-            chessNetwork->SendMsg();
-            QString msg;
-            chessNetwork->PullMsg(msg);
-            if(msg != nullptr) qDebug()<<"top: "<<msg;
-        }
-    });
-    timer.start();
+    // timer.setInterval(2000);
+    // QObject::connect(&timer, &QTimer::timeout,[&](){
+    //     if(chessNetwork){
+    //         chessNetwork->SendMsg();
+    //         QString msg;
+    //         chessNetwork->PullMsg(msg);
+    //         if(msg != nullptr) qDebug()<<"top: "<<msg;
+    //     }
+    // });
+    // timer.start();
 }
 
 chinesechess::~chinesechess()
@@ -49,7 +49,8 @@ void chinesechess::InitEnv()
     chessPieces->setGeometry(0, menuHeight, BOARD_W, BOARD_H);
 
     Piece* piece = new Piece();
-    piece->pixmap = GetStdPixmap(":/images/SELECTED.BMP");
+    // piece->pixmap = GetStdPixmap(":/images/SELECTED.BMP");
+    piece->pixmapPath = ":/images/SELECTED.BMP";
     piece->status = 0;
     piece->id = -1;
     pieceMp.insert(piece->id, piece);
@@ -170,7 +171,7 @@ void chinesechess::BackLastStep()
     chessPieces->update();
 }
 
-// 这个函数只接收翻转之后变成默认的坐标
+// 这个函数只接收翻转之后变成默认的坐标, 返回值表示是否需要发送这一次鼠标事件的数据
 bool chinesechess::SelectMoveEvent(qint32 px, qint32 py)
 {     
     qint32 x = G2AX(px); qint32 y = G2AY(py);
@@ -220,15 +221,14 @@ bool chinesechess::SelectMoveEvent(qint32 px, qint32 py)
         }
         // 消除选择框
         sp->status = 0;
+        return true;
     }
-    chessPieces->update(); // 更新画布
     setWindowTitle(titleTips);
-    return true;
+    return false;
 }
 
 void chinesechess::mousePressEvent(QMouseEvent *event)
 {
-    updateTitleTips("当前是我的回合");
     if (event->button() == Qt::LeftButton)
     {   
         qint32 px = event->x(), py = event->y() - menuHeight;
@@ -236,10 +236,14 @@ void chinesechess::mousePressEvent(QMouseEvent *event)
         if(!BOARD_FORWARD){
             plumbReverse(px, py);
         }
-        SelectMoveEvent(px, py);
+        if(SelectMoveEvent(px, py)){
+            // 如果移动完成, 则发送数据
+            sendPackData();
+        }
+        updateTitleTips("当前是我的回合");
+        chessPieces->update(); // 更新画布
         event->accept();
-    }
-    else{   
+    }else{   
         // 取消选择框
         pieceMp[SELECT_MAP_ID]->status = 0;
         chessPieces->update();
@@ -284,66 +288,109 @@ void chinesechess::InitServer()
 // 打包需要同步的数据,我们需要同步的数据有,chess_board棋盘数组, 
 // pieceMp(这个列表需要同步最后一次走棋和被选择的棋子), 
 // mStep所有的走棋步骤
-//全局变量有
 // 先把要打包的数据序列化成字节流
-void chinesechess::packSendData()
+void chinesechess::packSendData(QByteArray &data)
 {
-    QByteArray data;
     QDataStream stream(&data,QIODevice::WriteOnly);
     // chess_board
     for(int i = 0; i < BOARD_ROW; i++){
         for(int j = 0; j < BOARD_COL; j++){
-          stream<<chess_board[i][j];  
+            stream<<chess_board[i][j];
         }
     }
     // pieceMp
-    stream<<pieceMp.size();
+    stream<<qint32(pieceMp.size());
     for(const auto &pair : pieceMp.toStdMap()){
-        stream<<pair.first<<*pair.second;
+        stream<<qint32(pair.first)<<Piece(*pair.second);
     }
     // mStep
-    stream<<mStep.size();
+    stream<<qint32(mStep.size());
     for(auto it : mStep){
-        stream<<*it;
+        stream<<PieceMoveStep(*it);
     }
 }
 
-void chinesechess::unPackSendData()
+void chinesechess::unPackSendData(QByteArray &data)
 {
-    qint32 c_board[BOARD_ROW][BOARD_COL];
-    QMap<qint32, Piece*> bpMp;
-    QVector<PieceMoveStep*> bpMs;
-    QByteArray arrayData, data;
     QDataStream stream(&data, QIODevice::ReadOnly);
     // chess_board
     for(qint32 i = 0; i < BOARD_ROW; i++){
         for(qint32 j = 0; j < BOARD_COL; j++){
-          stream>>c_board[i][j];  
+            stream>>chess_board[i][j];
         }
     }
     // pieceMp
     qint32 bpMpSize = 0;
     stream>>bpMpSize;
     for(qint32 i = 0; i < bpMpSize; i++){
-        qint32 key; Piece p;
-        stream<< key << p;
-        bpMp[key] = new Piece(p);
+        qint32 k; Piece p;
+        stream>> k >> p;
+        updatePieceMap(k, p);
     }
     // mStep
     qint32 bpMsSize = 0;
     stream>>bpMsSize;
     for(qint32 i = 0; i < bpMsSize; i++){
         PieceMoveStep p;
-        stream<< p;
-        bpMs.push_back(new PieceMoveStep(p));
+        stream>> p;
+        updatePieceMapStep(i, p);
     }
+    // 取到移动步骤的最后一步,把起始位置的棋子在画图表中删除
+    if(bpMsSize > 1){
+        PieceMoveStep *p = mStep.back();
+        pieceMp.remove(G2APOS(p->beginPos.x(), p->beginPos.y()));
+    }
+}
+
+// 所有通过网络交换的数据以服务器传来的为准,否则可能本地篡改, 更新数据的数量级就百级不过千
+void chinesechess::updatePieceMapStep(qint32 i, PieceMoveStep p)
+{
+    if(i < mStep.size()){
+        mStep[i]->update(p);
+    }else{
+        mStep.push_back(new PieceMoveStep(p));
+    }
+}
+
+void chinesechess::updatePieceMap(qint32 k, Piece p)
+{
+    // 如果要更新的节点不在绘图列表中就要创建一个
+    if(!pieceMp.contains(k)){
+        pieceMp[k] = new Piece(p);
+    }else{
+        // 如果在绘图列表中就要更新值,这里不只是为了传输棋局,也应该是为了后续摆棋
+        pieceMp[k]->update(p);
+    }
+}
+
+void chinesechess::sendPackData()
+{
+    QByteArray data;
+    packSendData(data);
+    qDebug()<< "sendPackData";
+    chessNetwork->SendMsg(data);
+}
+
+void chinesechess::receivePackData()
+{
+    // 1.先从套接字拉取消息
+    QByteArray msg;
+    chessNetwork->PullMsg(msg);
+    // 解包数据
+    unPackSendData(msg);
+    // if(msg != nullptr) qDebug()<<"top: "<<msg;
 }
 
 void chinesechess::onNetworkEvent(qint32 etype)
 {
     // 回调类型1是从网络模块来的,通知上层有新的客户端连进来,需要给客户端同步棋盘数据
     if(etype == 1){
-
+        sendPackData();
+    }else if(etype == 2){ // 从最下层的socket回调上来的,表示套接字有新的消息过来
+        receivePackData();
+        // 接受完数据之后,需要刷新棋子画布
+        updateTitleTips("当前是我的回合");
+        chessPieces->update();
     }else{
         qDebug()<<"unkown etype: "<< etype;
     }
@@ -389,7 +436,8 @@ void chinesechess::DrawChessBoard()
                 // 通过棋子的编号得到棋子资源的路径
                 qint32 chessNum = chess_board[i][j];
                 Piece* p = new Piece();
-                p->pixmap = GetStdPixmap(GET_RES(QString(GET_COLOR(chessNum)) + QString(GET_CHESSNAME(chessNum))));
+                // p->pixmap = GetStdPixmap(GET_RES(QString(GET_COLOR(chessNum)) + QString(GET_CHESSNAME(chessNum))));
+                p->pixmapPath = GET_RES(QString(GET_COLOR(chessNum)) + QString(GET_CHESSNAME(chessNum)));
                 p->pos = QPoint(A2GX(j), A2GY(i));
                 p->status = 1;
                 p->id = i * 10 + j;
@@ -421,7 +469,7 @@ void chessBoardLabel::WithDraw()
             if(!BOARD_FORWARD){
                 plumbReverse(ax, ay);
             }
-            painter.drawPixmap(QPoint(ax, ay), it->pixmap);
+            painter.drawPixmap(QPoint(ax, ay), GetStdPixmap(it->pixmapPath));
         }
     }
 }

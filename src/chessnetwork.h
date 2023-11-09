@@ -8,8 +8,9 @@ class TcpSocket : public QTcpSocket
 {
     Q_OBJECT
 public:
-    TcpSocket(){};
-    TcpSocket(qintptr socket){
+    std::function<void(qint32)> func;
+    TcpSocket(std::function<void(qint32)> f):func(f){};
+    TcpSocket(std::function<void(qint32)> f, qintptr socket):func(f){
         this->setSocketDescriptor(socket);
         connect(this, &TcpSocket::disconnected, [=]{
             this->disconnectFromHost();
@@ -19,7 +20,10 @@ public:
     };
     QQueue<QByteArray> recvMsg;
     void ReceiveMsg(){
-        recvMsg.push_back(this->readAll());
+        auto t = this->readAll();
+        recvMsg.push_back(t);
+        // 有消息过来就要通知上层来读
+        func(2);
         // qDebug()<<"form server: "<<recvMsg.back().data();
     }
     void GetMsg(QByteArray &msg){
@@ -32,9 +36,9 @@ public:
     }
     bool SendMsg(QByteArray msg){
        this->write(msg);
-       // 等待数据全部写完
-       this->waitForBytesWritten();
-       return true; 
+        // 等待数据全部写完
+        //this->waitForBytesWritten();
+        return true; 
     }
 };
 
@@ -42,9 +46,6 @@ class MsgThread : public QThread
 {
     Q_OBJECT
 public:
-    MsgThread(qintptr skptr):ptr(skptr){
-        socket = new TcpSocket(ptr);
-    }
     MsgThread(TcpSocket* tcpSocket):socket(tcpSocket){}
 private:
     qintptr ptr;
@@ -60,13 +61,15 @@ public slots:
         this->quit();
     }
 };
-
+// 这个是TCP服务器开启监听,如果有新的客户端连进来就会创建一个套接字提供给上层
 class TcpServer : public QTcpServer
 {
     Q_OBJECT
 public:
     std::function<void(TcpSocket*)> func;
-    TcpServer(std::function<void(TcpSocket*)> f):func(f){};
+    std::function<void(qint32)> cbfunc;
+    // TcpServer(std::function<void(TcpSocket*)> f1, std::function<void(qint32)> f2):func(f1),cbfunc(f2){};
+    TcpServer(std::function<void(TcpSocket*)> f1, std::function<void(qint32)> f2);
     virtual void incomingConnection(qintptr socketDescriptor);
 };
 
@@ -92,11 +95,11 @@ public:
     // 如果是客户端就初始化这个
     bool InitClient();
     // 发送数据
-    bool SendMsg();
+    bool SendMsg(QByteArray &msg);
     // 把消息压入要发送的队列
-    bool PushMsg(QString *msg);
+    bool PushMsg(QByteArray *msg);
     // 从模块的消息队列取一条消息
-    bool PullMsg(QString &msg);
+    bool PullMsg(QByteArray &msg);
     void onClientConnect(TcpSocket *socket);
     // 要发送的,已经序列化的数据
     QQueue<QString> msgQueue;

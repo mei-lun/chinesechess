@@ -75,25 +75,29 @@ qint32 menuHeight = 0;
 bool checkMove(qint32, qint32, qint32, qint32, qint32);
 struct Piece {
     // 棋子的编号
-    qint32 id = 0, cid;
+    qint32 id = 0, cid = 0;
     // 棋子当前的坐标
     QPoint pos;
     // 棋子的像素图
-    QPixmap pixmap;
+    QString pixmapPath = "";
+    // QPixmap pixmap;
     // 棋子的状态,0(初始状态),1(就绪状态),2(死亡状态)
     qint32 status = 0;
     friend QDataStream& operator<<(QDataStream& stream, const Piece& p){
-        stream<<p.id<<p.cid<<p.pos<<p.pixmap<<p.status;
+        stream<<p.id<<p.cid<<p.pos<<p.pixmapPath<<p.status;
         return stream;
     }
     friend QDataStream& operator>>(QDataStream& stream, Piece& p){
-        stream>>p.id>>p.cid>>p.pos>>p.pixmap>>p.status;
+        stream>>p.id>>p.cid>>p.pos>>p.pixmapPath>>p.status;
         return stream;
     }
     // 空构造函数
     Piece(){};
     // 拷贝构造函数
-    Piece(const Piece &p):id(p.id), cid(p.cid), pos(p.pos), pixmap(p.pixmap), status(p.status){};
+    Piece(const Piece &p):id(p.id), cid(p.cid), pos(p.pos), pixmapPath(p.pixmapPath), status(p.status){};
+    void update(const Piece &p){
+        id = p.id, cid = p.cid, pos = p.pos, pixmapPath = p.pixmapPath, status = p.status;
+    };
 };
 // 双方的将/帅, 用来判断将军
 static Piece* RedKing = nullptr;
