@@ -2,6 +2,30 @@
 #include "chessmoverule.h"
 #include <QTimer>
 
+//////////////////////////数据结构序列化运算符重载/////////////////////////
+QDataStream& operator<<(QDataStream& stream, const PieceNode& p){
+    stream<<(p.curPiece);
+    qint32 qlen = p.deadPiece.size();
+    stream<<qlen;
+    for(qint32 i = 0; i < qlen; i++){
+        stream<<Piece(*p.deadPiece.at(i));
+    }
+    return stream;
+}
+
+QDataStream& operator>>(QDataStream& stream, PieceNode& p){
+    stream>>(*p.curPiece);
+    qint32 qlen = 0;
+    stream>>qlen;
+    for(qint32 i = 0; i < qlen; i++){
+        Piece pie;
+        stream>>pie;
+        p.updateDeadPiece(i, pie);
+    }
+    return stream;
+}
+/////////////////////////////////////////////////////////
+
 chinesechess::chinesechess(QWidget* parent)
     : QMainWindow(parent)
     , ui(new Ui_chinesechess)
@@ -53,7 +77,7 @@ void chinesechess::InitEnv()
     piece->pixmapPath = ":/images/SELECTED.BMP";
     piece->status = 0;
     piece->id = -1;
-    pieceMp.insert(piece->id, piece);
+    pieceMp.insert(piece->id, PieceNode(piece));
 
     // 开局由谁先走就先push一个对方的空走法进去,避免后续判空
     mStep.push_back(new PieceMoveStep(QPoint(0, 0), QPoint(0, 0), (BEGIN_ROLE<<1) * 10));
@@ -74,7 +98,7 @@ void chinesechess::SelectPiece(qint32 x, qint32 y)
     qDebug()<<"tick left "<<x<<" "<<y;
     if(chess_board[x][y])
     {
-        Piece* p = pieceMp[SELECT_MAP_ID];
+        Piece* p = pieceMp[SELECT_MAP_ID].curPiece;
         p->pos = QPoint(A2GY(y), A2GX(x));
         p->status = 1;
     }
@@ -94,15 +118,29 @@ bool chinesechess::TryMovePiece(qint32 abx, qint32 aby, qint32 bx, qint32 by, qi
         return false;
     }
     auto move2tar = [&](qint32 bx, qint32 by, qint32 ex, qint32 ey, bool fm, qint32 status = 1, qint32 pieceNum = 0){
-        Piece* bp = pieceMp[G2APOS(bx, by)];
-        bp->id = G2APOS(ex, ey);
-        bp->status = status;
-        bp->pos = QPoint(A2GX(ey), A2GY(ex));
-        // 使用swap交换的时候产生的空位置引用,被认为是一个长度
-        qSwap(pieceMp[G2APOS(bx, by)], pieceMp[G2APOS(ex, ey)]);
-        if(!pieceMp[G2APOS(bx, by)]){
-            // 这里不清除会造成内存泄漏
-            pieceMp.remove(G2APOS(bx, by));
+        Piece* bp = pieceMp[G2APOS(bx, by)].curPiece;
+        // 正常不吃子走棋的时候就是更新位置
+        if(bp != nullptr){
+            bp->id = G2APOS(ex, ey);
+            bp->status = status;
+            bp->pos = QPoint(A2GX(ey), A2GY(ex));
+        }
+        // 如果是吃棋则加入当前节点的死亡队列
+        if(status == 2){
+            pieceMp[G2APOS(bx, by)].pushDeadPiece(bp);
+            pieceMp[G2APOS(bx, by)].curPiece = nullptr;
+        }else{
+            // 强制移动只有在回退的时候发生
+            if(fm){
+                if(!pieceMp[G2APOS(bx, by)].deadPiece.isEmpty()){
+                    Piece* p = pieceMp[G2APOS(bx, by)].deadPiece.back();
+                    pieceNum = p->cid;
+                    pieceMp[G2APOS(bx, by)].curPiece = p;
+                    pieceMp[G2APOS(bx, by)].popDeadPiece();
+                }
+            }else{
+                qSwap(pieceMp[G2APOS(bx, by)].curPiece, pieceMp[G2APOS(ex, ey)].curPiece);
+            }
         }
         // 如果是吃棋
         if(status != 1){
@@ -115,7 +153,6 @@ bool chinesechess::TryMovePiece(qint32 abx, qint32 aby, qint32 bx, qint32 by, qi
             if(!fm){
                 qSwap(chess_board[bx][by], chess_board[ex][ey]);
             }else{
-                bx = (qint32)(bx/DIE_PIECE_NUM), by = (qint32)(by/DIE_PIECE_NUM);
                 chess_board[bx][by] = pieceNum;
             }
         } 
@@ -128,13 +165,14 @@ bool chinesechess::TryMovePiece(qint32 abx, qint32 aby, qint32 bx, qint32 by, qi
             updateTitleTips("非法移动");
             return false;
         }
-        move2tar(bx, by, bx * DIE_PIECE_NUM, by * DIE_PIECE_NUM, false, 2);
+        // 如果是吃棋，首位位置一样，置标记为死亡，然后把棋子放到位置的死亡队列中
+        move2tar(bx, by, bx, by, false, 2);
     }
     move2tar(abx, aby, bx, by, false);
     // 如果是强制移动需要把死亡的棋子再移回自己本来的位置
-    if(forceMove && pieceMp.contains(G2APOS(abx * DIE_PIECE_NUM, aby * DIE_PIECE_NUM))){
-        qint32 cid = pieceMp[G2APOS(abx * DIE_PIECE_NUM, aby * DIE_PIECE_NUM)]->cid;
-        move2tar(abx * DIE_PIECE_NUM, aby * DIE_PIECE_NUM, abx, aby, true, 1, cid);
+    if(forceMove){
+        // qint32 cid = pieceMp[G2APOS(abx, aby)]->cid;
+        move2tar(abx, aby, abx, aby, true, 1);
     }
     return true;
 }
@@ -151,7 +189,7 @@ bool chinesechess::MovePiece(qint32 abx, qint32 aby, qint32 x, qint32 y, qint32 
     qDebug()<<"begin self is safe? "<<checkKingSafe(chess_board[abx][aby], tc, false)<<" "<<tc;
     qDebug()<<"end self is safe? "<<checkKingSafe(chess_board[x][y], tc, false)<<" "<<tc;
     // 每次走棋的时候要检查自己是否被将军,如果自己被将军了必须得应将
-    if(!checkKingSafe(chess_board[abx][aby], tc, false)){
+    if(!checkKingSafe(chess_board[bx][by], tc, false)){
         updateTitleTips("被将军了,必须应将");
         return false;
     }
@@ -183,6 +221,7 @@ bool chinesechess::SelectMoveEvent(qint32 px, qint32 py)
 {     
     qint32 x = G2AX(px); qint32 y = G2AY(py);
     qSwap(x, y);
+
     qDebug()<< "moveP: x"<< x <<" y:"<< y;
     qint32 curRole = 0;
     auto curRound = [&](qint32 cx, qint32 cy)->bool{
@@ -201,12 +240,18 @@ bool chinesechess::SelectMoveEvent(qint32 px, qint32 py)
         }
         return true;
     };
-    if(!PIECE_IS_LIVE(pieceMp[SELECT_MAP_ID]->status)){
+    if(!PIECE_IS_LIVE(pieceMp[SELECT_MAP_ID].curPiece->status)){
         // 判断当前回合该谁走棋,不是自己的回合不能选
         if(!curRound(x, y)) return false;
         SelectPiece(x, y);
+        QVector<MoveNode>* ppp = new QVector<MoveNode>;
+        generateCurAllBoard(1, ppp);
+        for(int i = 0; i < ppp->size(); i++){
+            qDebug()<< ppp->at(i).beginPos <<" "<< ppp->at(i).endPos << ppp->at(i).usable <<"";
+        }
+        
     }else{
-        Piece* sp = pieceMp[SELECT_MAP_ID];
+        Piece* sp = pieceMp[SELECT_MAP_ID].curPiece;
         qint32 abx = G2AX(sp->pos.x()), aby = G2AY(sp->pos.y());
         // 图到数组是相反的
         qSwap(abx, aby);
@@ -237,6 +282,11 @@ bool chinesechess::SelectMoveEvent(qint32 px, qint32 py)
     return false;
 }
 
+bool chinesechess::isNetworkMode()
+{
+    return curNetRole > 0;
+}
+
 void chinesechess::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton)
@@ -246,7 +296,7 @@ void chinesechess::mousePressEvent(QMouseEvent *event)
         if(!BOARD_FORWARD){
             plumbReverse(px, py);
         }
-        if(SelectMoveEvent(px, py)){
+        if(SelectMoveEvent(px, py) && isNetworkMode()){
             // 如果移动完成, 则发送数据
             sendPackData();
         }
@@ -255,7 +305,7 @@ void chinesechess::mousePressEvent(QMouseEvent *event)
         event->accept();
     }else{   
         // 取消选择框
-        pieceMp[SELECT_MAP_ID]->status = 0;
+        pieceMp[SELECT_MAP_ID].curPiece->status = 0;
         chessPieces->update();
         event->ignore();
     }
@@ -313,7 +363,7 @@ void chinesechess::packSendData(QByteArray &data)
     // pieceMp
     stream<<qint32(pieceMp.size());
     for(const auto &pair : pieceMp.toStdMap()){
-        stream<<qint32(pair.first)<<Piece(*pair.second);
+        stream<<qint32(pair.first)<<PieceNode(pair.second);
     }
     // mStep
     stream<<qint32(mStep.size());
@@ -335,9 +385,9 @@ void chinesechess::unPackSendData(QByteArray &data)
     qint32 bpMpSize = 0;
     stream>>bpMpSize;
     for(qint32 i = 0; i < bpMpSize; i++){
-        qint32 k; Piece p;
-        stream>> k >> p;
-        updatePieceMap(k, p);
+        qint32 k;
+        stream>> k >> pieceMp[k];
+        // updatePieceMap(k, p);
     }
     // mStep
     qint32 bpMsSize = 0;
@@ -348,10 +398,10 @@ void chinesechess::unPackSendData(QByteArray &data)
         updatePieceMapStep(i, p);
     }
     // 取到移动步骤的最后一步,把起始位置的棋子在画图表中删除
-    if(bpMsSize > 1){
-        PieceMoveStep *p = mStep.back();
-        pieceMp.remove(G2APOS(p->beginPos.x(), p->beginPos.y()));
-    }
+    // if(bpMsSize > 1){
+    //     PieceMoveStep *p = mStep.back();
+    //     pieceMp.remove(G2APOS(p->beginPos.x(), p->beginPos.y()));
+    // }
 }
 
 // 所有通过网络交换的数据以服务器传来的为准,否则可能本地篡改, 更新数据的数量级就百级不过千
@@ -364,16 +414,16 @@ void chinesechess::updatePieceMapStep(qint32 i, PieceMoveStep p)
     }
 }
 
-void chinesechess::updatePieceMap(qint32 k, Piece p)
-{
-    // 如果要更新的节点不在绘图列表中就要创建一个
-    if(!pieceMp.contains(k)){
-        pieceMp[k] = new Piece(p);
-    }else{
-        // 如果在绘图列表中就要更新值,这里不只是为了传输棋局,也应该是为了后续摆棋
-        pieceMp[k]->update(p);
-    }
-}
+// void chinesechess::updatePieceMap(qint32 k, PieceNode p)
+// {
+//     // 如果要更新的节点不在绘图列表中就要创建一个
+//     if(!pieceMp.contains(k)){
+//         pieceMp[k] = new Piece(p);
+//     }else{
+//         // 如果在绘图列表中就要更新值,这里不只是为了传输棋局,也应该是为了后续摆棋
+//         pieceMp[k]->update(p);
+//     }
+// }
 
 void chinesechess::sendPackData()
 {
@@ -455,12 +505,14 @@ void chinesechess::DrawChessBoard()
                 p->status = 1;
                 p->id = i * 10 + j;
                 p->cid = chessNum;
-                pieceMp.insert(p->id, p);
+                pieceMp.insert(p->id, PieceNode(p));
+            }else{
+                pieceMp.insert(i * 10 + j, PieceNode());
             }
         }
     }
     // 初始化双方的将帅
-    RedKing = pieceMp[4], BlackKing = pieceMp[94];
+    RedKing = pieceMp[4].curPiece, BlackKing = pieceMp[94].curPiece;
 }
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -476,13 +528,29 @@ void chessBoardLabel::WithDraw()
     for(auto it : *pieceMp)
     {
         // qDebug()<< "auto it map: " << it->id;
-        if(PIECE_IS_LIVE(it->status))
+        if(it.curPiece != nullptr && PIECE_IS_LIVE(it.curPiece->status))
         {
-            qint32 ax = it->pos.x(), ay = it->pos.y();
+            qint32 ax = it.curPiece->pos.x(), ay = it.curPiece->pos.y();
             if(!BOARD_FORWARD){
                 plumbReverse(ax, ay);
             }
-            painter.drawPixmap(QPoint(ax, ay), GetStdPixmap(it->pixmapPath));
+            painter.drawPixmap(QPoint(ax, ay), GetStdPixmap(it.curPiece->pixmapPath));
         }
+    }
+}
+
+/////////////////////////PieceNode成员函数///////////////////////////////
+void PieceNode::pushDeadPiece(Piece *p){
+    deadPiece.push_back(p);
+}
+void PieceNode::popDeadPiece(){
+    deadPiece.pop_back();
+}
+void PieceNode::updateDeadPiece(qint32 i, Piece p){
+    if(i < deadPiece.size()){
+        deadPiece.at(i)->update(p);
+    }else{
+        // 这里貌似会导致内存泄漏，有创建的内存没有释放
+        deadPiece.push_back(new Piece(p));
     }
 }

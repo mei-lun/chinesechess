@@ -12,6 +12,7 @@
 #include "chessnetwork.h"
 
 struct Piece;
+class PieceNode;
 struct PieceMoveStep{
     QPoint beginPos, endPos;
     qint32 chessNum;
@@ -33,12 +34,25 @@ struct PieceMoveStep{
 class chessBoardLabel : public QLabel
 {
 public:
-    chessBoardLabel(QWidget *parent = nullptr, QMap<qint32, Piece*> *pm = nullptr) : QLabel(parent), pieceMp(pm) {}
+    chessBoardLabel(QWidget *parent = nullptr, QMap<qint32, PieceNode> *pm = nullptr) : QLabel(parent), pieceMp(pm) {}
     void WithDraw();
-    QMap<qint32, Piece*> *pieceMp;
+    QMap<qint32, PieceNode> *pieceMp;
 
 protected:
     void paintEvent(QPaintEvent *event) override;
+};
+
+class PieceNode {
+public:
+    // 记录坐标当前放置的棋子
+    Piece *curPiece = nullptr;
+    // 记录在这个坐标死亡的棋子
+    QQueue<Piece*> deadPiece;
+    PieceNode(){};
+    PieceNode(Piece *p):curPiece(p){};
+    void pushDeadPiece(Piece *p);
+    void popDeadPiece();
+    void updateDeadPiece(qint32 i, Piece p);
 };
 
 class chinesechess : public QMainWindow {
@@ -64,8 +78,9 @@ public:
     void receivePackData();
     void packSendData(QByteArray &data);
     void unPackSendData(QByteArray &data);
-    void updatePieceMap(qint32 k, Piece p);
+    void updatePieceMap(qint32 k, PieceNode p);
     void updatePieceMapStep(qint32 i, PieceMoveStep p);
+    bool isNetworkMode();
     QLabel *chessBoard;
     chessBoardLabel *chessPieces;
     QVector<PieceMoveStep*> mStep;
@@ -79,7 +94,7 @@ public:
 
 private:
     Ui_chinesechess* ui;
-    QMap<qint32, Piece*> pieceMp;
+    QMap<qint32, PieceNode> pieceMp;
     void AddWindowModule();
     QMenu *chessMenu;
     QActionGroup *alignmentGroup;
