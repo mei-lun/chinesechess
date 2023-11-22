@@ -4,7 +4,8 @@
 
 //////////////////////////数据结构序列化运算符重载/////////////////////////
 QDataStream& operator<<(QDataStream& stream, const PieceNode& p){
-    stream<<(p.curPiece);
+    // 这里数据pack的不正常，导致收到的数据有问题
+    stream<<Piece(*p.curPiece);
     qint32 qlen = p.deadPiece.size();
     stream<<qlen;
     for(qint32 i = 0; i < qlen; i++){
@@ -14,14 +15,22 @@ QDataStream& operator<<(QDataStream& stream, const PieceNode& p){
 }
 
 QDataStream& operator>>(QDataStream& stream, PieceNode& p){
-    stream>>(*p.curPiece);
+    Piece curpie;
+    stream>>curpie;
+    // 每一个位置都有棋子，不需要重新new
+    p.curPiece->update(curpie);
     qint32 qlen = 0;
     stream>>qlen;
     for(qint32 i = 0; i < qlen; i++){
         Piece pie;
         stream>>pie;
+        // 如果对方走的是吃子棋，导致当前棋子和死亡棋子对不齐
+        if(pie == *p.curPiece){
+            p.curPiece->reset();
+        }
         p.updateDeadPiece(i, pie);
     }
+    // 如果要验证收到的数据是否有问题则应该在这里打断点看p的值
     return stream;
 }
 /////////////////////////////////////////////////////////
@@ -120,6 +129,7 @@ bool chinesechess::TryMovePiece(qint32 abx, qint32 aby, qint32 bx, qint32 by, qi
     auto move2tar = [&](qint32 bx, qint32 by, qint32 ex, qint32 ey, bool fm, qint32 status = 1, qint32 pieceNum = 0){
         Piece* bp = pieceMp[G2APOS(bx, by)].curPiece;
         // 正常不吃子走棋的时候就是更新位置
+        // 吃子的时候起点和终点是一样的，只需要移动到死亡队列
         if(bp != nullptr){
             bp->id = G2APOS(ex, ey);
             bp->status = status;
@@ -127,15 +137,16 @@ bool chinesechess::TryMovePiece(qint32 abx, qint32 aby, qint32 bx, qint32 by, qi
         }
         // 如果是吃棋则加入当前节点的死亡队列
         if(status == 2){
-            pieceMp[G2APOS(bx, by)].pushDeadPiece(bp);
-            pieceMp[G2APOS(bx, by)].curPiece = nullptr;
+            pieceMp[G2APOS(bx, by)].pushDeadPiece(new Piece(*bp));
+            pieceMp[G2APOS(bx, by)].curPiece->reset();
         }else{
             // 强制移动只有在回退的时候发生
             if(fm){
                 if(!pieceMp[G2APOS(bx, by)].deadPiece.isEmpty()){
                     Piece* p = pieceMp[G2APOS(bx, by)].deadPiece.back();
                     pieceNum = p->cid;
-                    pieceMp[G2APOS(bx, by)].curPiece = p;
+                    p->status = status;
+                    pieceMp[G2APOS(bx, by)].curPiece->update(*p);
                     pieceMp[G2APOS(bx, by)].popDeadPiece();
                 }
             }else{
@@ -214,6 +225,10 @@ void chinesechess::BackLastStep()
     // 走棋回退
     mStep.pop_back();
     chessPieces->update();
+    if(isNetworkMode()){
+        // 如果移动完成, 则发送数据
+        sendPackData();
+    }
 }
 
 // 这个函数只接收翻转之后变成默认的坐标, 返回值表示是否需要发送这一次鼠标事件的数据
@@ -363,7 +378,7 @@ void chinesechess::packSendData(QByteArray &data)
     // pieceMp
     stream<<qint32(pieceMp.size());
     for(const auto &pair : pieceMp.toStdMap()){
-        stream<<qint32(pair.first)<<PieceNode(pair.second);
+        stream<<qint32(pair.first)<<pair.second;
     }
     // mStep
     stream<<qint32(mStep.size());
@@ -387,8 +402,8 @@ void chinesechess::unPackSendData(QByteArray &data)
     for(qint32 i = 0; i < bpMpSize; i++){
         qint32 k;
         stream>> k >> pieceMp[k];
-        // updatePieceMap(k, p);
     }
+
     // mStep
     qint32 bpMsSize = 0;
     stream>>bpMsSize;
@@ -397,11 +412,6 @@ void chinesechess::unPackSendData(QByteArray &data)
         stream>> p;
         updatePieceMapStep(i, p);
     }
-    // 取到移动步骤的最后一步,把起始位置的棋子在画图表中删除
-    // if(bpMsSize > 1){
-    //     PieceMoveStep *p = mStep.back();
-    //     pieceMp.remove(G2APOS(p->beginPos.x(), p->beginPos.y()));
-    // }
 }
 
 // 所有通过网络交换的数据以服务器传来的为准,否则可能本地篡改, 更新数据的数量级就百级不过千
@@ -507,7 +517,7 @@ void chinesechess::DrawChessBoard()
                 p->cid = chessNum;
                 pieceMp.insert(p->id, PieceNode(p));
             }else{
-                pieceMp.insert(i * 10 + j, PieceNode());
+                pieceMp.insert(i * 10 + j, PieceNode(new Piece()));
             }
         }
     }
@@ -544,6 +554,8 @@ void PieceNode::pushDeadPiece(Piece *p){
     deadPiece.push_back(p);
 }
 void PieceNode::popDeadPiece(){
+    Piece *p = deadPiece.back();
+    delete p;
     deadPiece.pop_back();
 }
 void PieceNode::updateDeadPiece(qint32 i, Piece p){

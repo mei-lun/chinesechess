@@ -49,6 +49,8 @@ public:
     // 记录在这个坐标死亡的棋子
     QQueue<Piece*> deadPiece;
     PieceNode(){};
+    // 拷贝构造
+    PieceNode(const PieceNode &p):curPiece(p.curPiece), deadPiece(p.deadPiece){};
     PieceNode(Piece *p):curPiece(p){};
     void pushDeadPiece(Piece *p);
     void popDeadPiece();

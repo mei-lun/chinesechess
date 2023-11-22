@@ -102,12 +102,16 @@ struct Piece {
     // 棋子的状态,0(初始状态),1(就绪状态),2(死亡状态)
     qint32 status = 0;
     friend QDataStream& operator<<(QDataStream& stream, const Piece& p){
-        stream<<p.id<<p.cid<<p.pos<<p.pixmapPath<<p.status;
+        stream<<qint32(p.id)<<qint32(p.cid)<<QPoint(p.pos)<<QString(p.pixmapPath)<<qint32(p.status);
         return stream;
     }
     friend QDataStream& operator>>(QDataStream& stream, Piece& p){
         stream>>p.id>>p.cid>>p.pos>>p.pixmapPath>>p.status;
         return stream;
+    }
+    friend bool operator==(Piece& p1, Piece& p2){
+        if(p1.id ==  p2.id && p1.cid == p2.cid) return true;
+        return false;
     }
     // 空构造函数
     Piece(){};
@@ -116,6 +120,9 @@ struct Piece {
     void update(const Piece &p){
         id = p.id, cid = p.cid, pos = p.pos, pixmapPath = p.pixmapPath, status = p.status;
     };
+    void reset(){
+        id = 0, cid = 0, pos = QPoint(0, 0), pixmapPath = "", status = 0;
+    }
 };
 // 双方的将/帅, 用来判断将军
 static Piece* RedKing = nullptr;
