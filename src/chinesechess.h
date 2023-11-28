@@ -10,6 +10,7 @@
 #include <QLabel>
 #include <QStack>
 #include "chessnetwork.h"
+#include "chessmoverule.h"
 
 struct Piece;
 class PieceNode;
@@ -57,7 +58,7 @@ public:
     void updateDeadPiece(qint32 i, Piece p);
 };
 
-class chinesechess : public QMainWindow {
+class chinesechess : public QMainWindow, MainChessClass {
     Q_OBJECT
     
 public:

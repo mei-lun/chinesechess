@@ -1,5 +1,4 @@
 #include "chinesechess.h"
-#include "chessmoverule.h"
 #include <QTimer>
 
 //////////////////////////数据结构序列化运算符重载/////////////////////////
