@@ -11,8 +11,8 @@
 #include <QStack>
 #include "chessnetwork.h"
 #include "chessmoverule.h"
+#include "chessrobot.h"
 
-struct Piece;
 class PieceNode;
 struct PieceMoveStep{
     QPoint beginPos, endPos;

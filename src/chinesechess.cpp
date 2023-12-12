@@ -305,6 +305,9 @@ void chinesechess::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton)
     {   
+        chessRobot* crb = new chessRobot();
+        crb->setChessBoardArray(chess_board);
+        crb->searchMain(1);
         qint32 px = event->x(), py = event->y() - menuHeight;
         // 如果棋盘是反向的则需要翻转坐标
         if(!BOARD_FORWARD){
