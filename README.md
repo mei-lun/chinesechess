@@ -2,7 +2,7 @@
 Qt版本的中国象棋程序
 本项目旨在作为C++Qt项目练手，作为一名中国象棋爱好者，自己写一个具有网络对战，人机对战的中国象棋程序，是非常激动人心的。
 ## 程序演示
-![](images/chinesechessimage.png)
+![](https://github.com/mei-lun/chinesechess/blob/main/images/chinesechessimage.png)
 ## 运行环境
 本项目基于vscode + qmake + MSVC2019 + Qt-6.6.0开发
 1. 安装对应版本的Qt https://www.qt.io/download-qt-installer
