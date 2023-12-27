@@ -84,6 +84,7 @@ public:
     void updatePieceMap(qint32 k, PieceNode p);
     void updatePieceMapStep(qint32 i, PieceMoveStep p);
     bool isNetworkMode();
+    void runRebotThread(qint32 roleColor);
     QLabel *chessBoard;
     chessBoardLabel *chessPieces;
     QVector<PieceMoveStep*> mStep;
@@ -100,12 +101,17 @@ private:
     QMap<qint32, PieceNode> pieceMp;
     void AddWindowModule();
     QMenu *chessMenu;
+    QMenu *robotMenu;
     QActionGroup *alignmentGroup;
     QAction *invertBoard;
     QAction *backStep;
     QAction *initServer;
     QAction *initClient;
+    QAction *redBot;
+    QAction *blackBot;
 
 private slots:
     void menuActionSetClicked();
+    void menuActionRedBot();
+    void menuActionBlackBot();
 };

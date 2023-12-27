@@ -2,7 +2,18 @@
 // 先通过走法生成器,得到盘面上所有棋子走法
 #include <QVector>
 #include <QPoint>
+#include <qalgorithms.h>
 #include "chessmoverule.h"
+// struct HistoryTable{
+//     MoveNode node;
+//     qint32 val = 0;
+//     HistoryTable(MoveNode n, qint32 v){
+//         node = n, val = v;
+//     }
+// };
+static QMap<MoveNode, qint32> bestMovePos;
+
+static MoveNode mvResult;
 class chessRobot: public MainChessClass
 {
 private:
@@ -16,39 +27,29 @@ public:
     qint32 redScore, blackScore;// 当前回合该谁走棋，0红，1黑
     // 记录当前盘面所有的走法
     QVector<MoveNode> *allPiecePos;
-    // 记录从当前盘面最好的走法,带深度的,这里有个问题就是,我的最好走法,对应对方最差的走法所以这里是只有一条链
-    QList<MoveNode> bestMovePos;
     // 调用人机的时候的初始盘面,供还原使用
     qint32 back_chess_board[BOARD_ROW][BOARD_COL];
-    // 如果是要备份数组则把初始数组传进来,如果是要还原数组则把备份的数组传进来
-    // void setChessBoardArray(qint32 **board_array);
-    // void searchMain(qint32 curRole);
-    // void tryMakeMove(qint32 bx, qint32 by, qint32 ex, qint32 ey, QVector<MoveNode> *moveStep);
-    // void searchFull(qint32 qvalAlpha, qint32 qvalBeta, qint32 nDepth, qint32 color, QVector<MoveNode> *moveStep);
-    // void makeMove(qint32 bx, qint32 by, qint32 ex, qint32 ey, QVector<MoveNode> *moveStep);
-    // void undoMove(qint32 bx, qint32 by, qint32 ex, qint32 ey, QVector<MoveNode> *moveStep);
-    void makeMove(qint32 bx, qint32 by, qint32 ex, qint32 ey, QVector<MoveNode> *moveStep)
+    // 走棋的步数
+    qint32 ndistance = 0;
+    qint32 makeMove(qint32 bx, qint32 by, qint32 ex, qint32 ey)
     {
-        MoveNode md;
-        md.beginPos = qMakePair(bx, by), md.endPos = qMakePair(ex, ey);
-        md.beginChessNum = chess_board[bx][by], md.endChessNum = chess_board[ex][ey];
-        moveStep->push_back(md);
+        qint32 diechess = chess_board[ex][ey];
         chess_board[ex][ey] = chess_board[bx][by];
+        chess_board[bx][by] = 0;
         if(GET_CHESSNUM(chess_board[ex][ey]) == 5){  
             GET_COLOR(chess_board[ex][ey]) == 'R'? RedKing->pos = QPoint(A2GX(ey), A2GY(ex)):BlackKing->pos = QPoint(A2GX(ey), A2GY(ex));
         }
+        ndistance++;
+        return diechess;
     }
-    void undoMove(qint32 bx, qint32 by, qint32 ex, qint32 ey, QVector<MoveNode> *moveStep)
+    void undoMove(qint32 bx, qint32 by, qint32 ex, qint32 ey, qint32 cnum)
     {
-        MoveNode md = moveStep->back();
-        // 还原初始位置和结束位置的棋子
-        qint32 bc = md.beginChessNum, ec = md.endChessNum;
-        chess_board[md.BX()][md.BY()] = bc;
-        chess_board[md.EX()][md.EY()] = ec;
-        moveStep->pop_back();
-        if(GET_CHESSNUM(bc) == 5){
-            GET_COLOR(bc) == 'R'? RedKing->pos = QPoint(A2GX(md.BY()), A2GY(md.BX())):BlackKing->pos = QPoint(A2GX(md.BY()), A2GY(md.BX()));
+        chess_board[bx][by] = chess_board[ex][ey];
+        chess_board[ex][ey] = cnum;
+        if(GET_CHESSNUM(chess_board[bx][by]) == 5){
+            GET_COLOR(chess_board[bx][by]) == 'R'? RedKing->pos = QPoint(A2GX(by), A2GY(bx)):BlackKing->pos = QPoint(A2GX(by), A2GY(bx));
         }
+        ndistance--;
     }
     // 进入招法生成之前先备份初始数组,算出预设深度的最优解之后再还原当前盘面
     void setChessBoardArray(qint32 board_array[10][9])
@@ -70,67 +71,91 @@ public:
             }
         }
     }
-    void searchFull(qint32 qvalAlpha, qint32 qvalBeta, qint32 nDepth, qint32 color, QVector<MoveNode> *moveStep)
+
+    qint32 searchFull(qint32 qvalAlpha, qint32 qvalBeta, qint32 nDepth, qint32 color)
     {
-        // 当达到搜索深度的时候,返回盘面的价值
-        if(nDepth == 0){
-            return;
-        }
-        // 初始化最佳走法
-        qint32 vl = 0, vlBest = 0, mvBest = 0;
-        // 将死的分值
-        vlBest = -10000;
-        // 生成全部走法
-        QVector<MoveNode>* nGenMoves = new QVector<MoveNode>;
-        generateCurAllBoard(color, nGenMoves);
-        for(auto it : *nGenMoves){
-            tryMakeMove(it.BX(), it.BY(), it.EX(), it.EY(), moveStep);
-            searchFull(-qvalBeta, -qvalAlpha, nDepth-1, (color==1?2:1), moveStep);
-            qint32 redVal = 0, blackVal = 0;
+        auto evaluate = [&]()->qint32{
+            qint32 redVal = 0, blackVal = 0, val = 0;
             boardPieceVal(redVal, blackVal);
             qint32 RBVal = finalBoardVal(redVal, blackVal);
-            vl = (color == 1)? (RBVal + 3):(-RBVal);
-            undoMove(it.BX(), it.BY(), it.EX(), it.EY(), moveStep);
-            if(vl > vlBest){
-                vlBest = vl;
+            val = (color == 1)? (RBVal + 3):(-RBVal);
+            return val;
+        };
+        // 当达到搜索深度的时候,返回盘面的价值
+        if(nDepth == 0){
+            return evaluate();
+        }
+        // 初始化最佳走法
+        qint32 vl = 0;
+        // 初始化一个最佳走法
+        MoveNode mvBest(0, 0, 0, 0, -10000);
+        // 生成全部走法
+        QVector<MoveNode> nGenMoves;
+        generateCurAllBoard(color, &nGenMoves);
+        // 按历史表排序，如果这步棋的深度越大，越说明这步棋的价值越高
+        std::sort(nGenMoves.begin(), nGenMoves.end(), [&](MoveNode a, MoveNode b)->bool{
+            return bestMovePos[b] < bestMovePos[a];
+        });
+        for(auto it : nGenMoves){
+            qint32 diechess = makeMove(it.BX(), it.BY(), it.EX(), it.EY());
+            qint32 tc = 0;
+            bool flag = checkKingSafe(chess_board[it.EX()][it.EY()], tc, false);
+            // 如果自己走这步棋被将军了，则撤销走法走下一步棋
+            if(!flag) {
+                undoMove(it.BX(), it.BY(), it.EX(), it.EY(), diechess);
+                continue;
+            }
+            vl = -searchFull(-qvalBeta, -qvalAlpha, nDepth-1, (color==1?2:1));
+            undoMove(it.BX(), it.BY(), it.EX(), it.EY(), diechess);
+            if(vl > mvBest.score){
+                mvBest.score = vl;
+                // Max层收下界，Min层收上界
                 if(vl >= qvalBeta){
+                    mvBest.score = vl;
+                    mvBest.beginPos = qMakePair(it.BX(), it.BY());
+                    mvBest.endPos = qMakePair(it.EX(), it.EY());
                     // 截断
                     break;
                 }
                 if(vl > qvalAlpha){
+                    mvBest.beginPos = qMakePair(it.BX(), it.BY());
+                    mvBest.endPos = qMakePair(it.EX(), it.EY());
                     // 缩小边界
                     qvalAlpha = vl;
                 }
             }
         }
-    }
-    void tryMakeMove(qint32 bx, qint32 by, qint32 ex, qint32 ey, QVector<MoveNode> *moveStep)
-    {
-        qint32 tc = 0, bp = chess_board[bx][by], ep = chess_board[ex][ey];
-        // 先把最终棋盘形成，然后判断，判断完成后，再还原，再真实走棋
-        chess_board[ex][ey] = chess_board[bx][by];
-        // 如果走这步棋自身是安全的
-        bool flag = checkKingSafe(bp, tc, false);
-        chess_board[bx][by] = bp, chess_board[ex][ey] = ep;
-        if(flag) makeMove(bx, by, ex, ey, moveStep);   
+        // 如果达到将死的分值，则返回步数和最高分的差值作为走棋的价值
+        if(mvBest.score == -10000) {
+            return ndistance - mvBest.score;
+        }else{
+            bestMovePos[mvBest] += nDepth * nDepth;
+            mvResult = mvBest;
+        }
+        return mvBest.score;
     }
     // 传入参数当前是该谁下棋的
-    void searchMain(qint32 curRole)
+    MoveNode searchMain(qint32 curRole)
     {
         // 当前盘面的分数,如果分数达到了上限或者下限则是有杀棋
         qint32 score = 0;
         // 使用记忆化搜索减去同类型的分支
-        // HistoryTable
+        bestMovePos.clear();
+        // 初始化计步器
+        ndistance = 0;
         // 避免搜索时间过长
-        // qint32 t = clock();
-        // 记录从当前盘面开始所有的步骤
-        QVector<MoveNode> moveStep;
+        qint32 t = clock();
         // 定义最大的搜索深度
-        for(qint32 i = 1; i <= 1; i++){
+        for(qint32 i = 1; i <= 30; i++){
             // 需要有一个变量记录从当前盘面开始记录的步骤每次进入时重新计算
             qint32 qval = 0;
-            searchFull(-10000, 10000, i, curRole, &moveStep);
+            qval = searchFull(-10000, 10000, i, curRole);
             if(qval > 9900 || qval < -9900) break;
+            // 如果超过5秒就不再继续往下搜了
+            // if(clock() - t > 1000 * 5) break;
         }
+        // 玩家当前搜索出来的最佳走法
+        qDebug()<<(curRole==1?'R':'B')<< " best move::begin: "<< mvResult.beginPos.first<<" "<<mvResult.beginPos.second<<" end: "<< mvResult.endPos.first<<" "<<mvResult.endPos.second;
+        return mvResult;
     }
 };

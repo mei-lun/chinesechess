@@ -1,5 +1,7 @@
 #include "chinesechess.h"
 #include <QTimer>
+#include <thread>
+#include <Windows.h>
 
 //////////////////////////数据结构序列化运算符重载/////////////////////////
 QDataStream& operator<<(QDataStream& stream, const PieceNode& p){
@@ -258,12 +260,6 @@ bool chinesechess::SelectMoveEvent(qint32 px, qint32 py)
         // 判断当前回合该谁走棋,不是自己的回合不能选
         if(!curRound(x, y)) return false;
         SelectPiece(x, y);
-        QVector<MoveNode>* ppp = new QVector<MoveNode>;
-        generateCurAllBoard(1, ppp);
-        for(int i = 0; i < ppp->size(); i++){
-            qDebug()<< ppp->at(i).beginPos <<" "<< ppp->at(i).endPos << ppp->at(i).usable <<"";
-        }
-        
     }else{
         Piece* sp = pieceMp[SELECT_MAP_ID].curPiece;
         qint32 abx = G2AX(sp->pos.x()), aby = G2AY(sp->pos.y());
@@ -337,6 +333,7 @@ void chinesechess::updateTitleTips(QString info)
 
 void chinesechess::AddWindowModule()
 {
+///////////////////////////第一列控件/////////////////////////////////
     // 创建主窗口控件
     chessMenu = menuBar()->addMenu(tr("&设置"));
     menuHeight = menuBar()->height();
@@ -352,6 +349,55 @@ void chinesechess::AddWindowModule()
     initClient = new QAction(tr("&打开客户端模式"), this);
     connect(initClient, &QAction::triggered, this, &chinesechess::InitClient);
     chessMenu->addAction(initClient);
+///////////////////////////第二列控件//////////////////////////////////
+    robotMenu = menuBar()->addMenu(tr("&人机"));
+    redBot = new QAction(tr("&红方人机托管"), this);
+    connect(redBot, &QAction::triggered, this, &chinesechess::menuActionRedBot);
+    chessMenu->addAction(redBot);
+    blackBot = new QAction(tr("&黑方人机托管"), this);
+    connect(blackBot, &QAction::triggered, this, &chinesechess::menuActionBlackBot);
+    chessMenu->addAction(blackBot);
+}
+
+// 运行人机线程
+void chinesechess::runRebotThread(qint32 roleColor)
+{
+    // 把当前的盘面传给人机引擎，人机引擎返回最佳走法之后进行下棋
+    auto func = [&](){
+        // 人机需要不停的思考如何下棋
+        while (true) {
+            auto lastStep = mStep.back();
+            // 判断现在该哪个颜色的走棋,如果要区分角色,那么就要判断当前网络角色是什么颜色的
+            qint32 lastRole = (qint32)(lastStep->chessNum/10);
+            //如果当前是自己的回合则开始考虑如何下棋
+            if(lastRole != roleColor) {
+                chessRobot* robot = new chessRobot();
+                robot->setChessBoardArray(chess_board);
+                MoveNode bestMove = robot->searchMain(roleColor);
+                qint32 tc = 0;
+                // AI计算出来的走法应该是一定能走的，如果不能走直接报错
+                if(!MovePiece(bestMove.beginPos.first, bestMove.beginPos.second, bestMove.endPos.first, bestMove.endPos.second, tc)){
+                    qDebug()<<"AI move error";
+                    return;
+                }
+            }
+            //每下一步棋停两秒等待一下
+            Sleep(2000);
+        }
+    };
+    std::thread robotthread(func);
+    // 从主线程中分离出来，自行执行
+    robotthread.detach();
+}
+
+void chinesechess::menuActionRedBot()
+{
+
+}
+
+void chinesechess::menuActionBlackBot()
+{
+    
 }
 
 void chinesechess::InitServer()

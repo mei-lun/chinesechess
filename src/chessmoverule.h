@@ -87,7 +87,17 @@ public:
     // 构造函数
     MoveNode(){};
     MoveNode(qint32 bx, qint32 by, qint32 ex, qint32 ey):beginPos(qMakePair(bx, by)),endPos(qMakePair(ex, ey)){};
+    MoveNode(qint32 bx, qint32 by, qint32 ex, qint32 ey, qint32 val):beginPos(qMakePair(bx, by)),endPos(qMakePair(ex, ey)), score(val){};
     MoveNode(QPair<qint32, qint32> bp, QPair<qint32, qint32> ep):beginPos(bp), endPos(ep){};
+    // 拷贝构造函数
+    MoveNode(const MoveNode &mn){
+        beginPos = mn.beginPos;
+        endPos = mn.endPos;
+        usable = mn.usable;
+        score = mn.score;
+        beginChessNum = mn.beginChessNum;
+        endChessNum = mn.endChessNum;
+    };
     qint32 BX(){ return beginPos.first; }
     qint32 BY(){ return beginPos.second; }
     qint32 EX(){ return endPos.first; }
@@ -95,6 +105,17 @@ public:
     qint32 GetBeginChessNum(){ return beginChessNum; }
     qint32 GetEndChessNum(){ return endChessNum; }
     void SetUsable(bool flag){usable = flag; }
+    friend bool operator < (const MoveNode &a, const MoveNode &b)
+    {
+        // 满足严格弱序关系
+        if(a.beginPos < b.beginPos || (a.beginPos == b.beginPos && a.endPos < b.endPos)) return true;
+        return false;
+    }
+    friend bool operator == (const MoveNode &a, const MoveNode &b)
+    {
+        if(a.beginPos == b.beginPos && a.endPos == b.endPos) return true;
+        return false;
+    }
 };
 
 class Piece {
@@ -298,12 +319,12 @@ public:
         // 先判断这个棋子本来的方向是哪一边
         qint32 pRole = GET_COLOR(chessNum);
         // 如果是红棋，则棋盘正向的时候需要翻转, // 如果是黑棋，则棋盘反向的时候需要翻转
-        if((pRole == 1 && BOARD_FORWARD == 1) || (pRole == 2 && BOARD_FORWARD == 0)){
+        if((pRole == 'R' && BOARD_FORWARD == 1) || (pRole == 'B' && BOARD_FORWARD == 0)){
             x = BOARD_ROW - (x + 1), y = y;
         }
         qint32 pName = GET_CHESSNUM(chessNum);
         // 返回子力价值
-        return cucvalPiecePos[pName][x][y];
+        return cucvalPiecePos[pName - 1][x][y];
     }
     QMap<qint32, char> chessNumName = {{1, 'R'}, {2, 'N'}, {3, 'B'}, {4, 'A'}, {5, 'K'}, {6, 'C'}, {7, 'P'}};
     /* 一下所有招法对应的是在棋盘下方, 如果是棋盘上方则需要翻转 */
@@ -651,7 +672,6 @@ public:
 
     // 生成盘面上某个颜色棋子的所有可能的走法, 通过这些走法给盘面打分 
     // 这个时候不必关心是哪个棋子的走法
-    // QVector<QPair<QPair<int, int>, QPair<int, int>>> 所有可能的走法, 起点->终点,不必关心棋子
     void generateCurAllBoard(qint32 color, QVector<MoveNode> *allPiecePos)
     {
         for(qint32 i = 0; i < BOARD_ROW; i++){
@@ -680,6 +700,7 @@ public:
         for(qint32 i = 0; i < BOARD_ROW; i++)
             for(qint32 j = 0; j < BOARD_COL; j++){
                 qint32 pColor = GETPIECECOLOR(i, j);
+                if(chess_board[i][j] <= 0) continue;
                 qint32 pVal = calcBoardVal(chess_board[i][j], i, j);
                 if(pColor == 1) redVal += pVal;
                 else blackVal += pVal;
