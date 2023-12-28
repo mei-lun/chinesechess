@@ -68,7 +68,7 @@ public:
     void mousePressEvent(QMouseEvent *event) override;
     void SelectPiece(qint32 x, qint32 y);
     bool SelectMoveEvent(qint32 px, qint32 py);
-    bool MovePiece(qint32 abx, qint32 aby, qint32 x, qint32 y, qint32 &tc);
+    bool CheckMovePiece(qint32 abx, qint32 aby, qint32 x, qint32 y, qint32 &tc);
     bool TryMovePiece(qint32 abx, qint32 aby, qint32 bx, qint32 by, qint32 forceMove);
     void SetWindowStyle();
     void DrawChessBoard();
@@ -95,6 +95,8 @@ public:
     QTimer timer;
     // 大于0的时候玩家当前的角色是执红棋还是黑棋(红就是1, 黑就是2),小于0的时候就是单机模式,不分红黑
     qint32 curNetRole = -1;
+    bool redRobotStatus = false;
+    bool blackRobotStatus = false;
 
 private:
     Ui_chinesechess* ui;

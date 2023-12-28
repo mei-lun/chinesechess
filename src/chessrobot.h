@@ -52,7 +52,7 @@ public:
         ndistance--;
     }
     // 进入招法生成之前先备份初始数组,算出预设深度的最优解之后再还原当前盘面
-    void setChessBoardArray(qint32 board_array[10][9])
+    void setChessBoardArray(qint32 board_array[][9])
     {
         auto func = [&](qint32 i, qint32 j)->Piece*{
             Piece* p = new Piece();
@@ -146,13 +146,14 @@ public:
         // 避免搜索时间过长
         qint32 t = clock();
         // 定义最大的搜索深度
-        for(qint32 i = 1; i <= 30; i++){
+        for(qint32 i = 1; i <= 4; i++){
             // 需要有一个变量记录从当前盘面开始记录的步骤每次进入时重新计算
             qint32 qval = 0;
             qval = searchFull(-10000, 10000, i, curRole);
             if(qval > 9900 || qval < -9900) break;
             // 如果超过5秒就不再继续往下搜了
             // if(clock() - t > 1000 * 5) break;
+            qDebug()<<"qval: "<<qval;
         }
         // 玩家当前搜索出来的最佳走法
         qDebug()<<(curRole==1?'R':'B')<< " best move::begin: "<< mvResult.beginPos.first<<" "<<mvResult.beginPos.second<<" end: "<< mvResult.endPos.first<<" "<<mvResult.endPos.second;

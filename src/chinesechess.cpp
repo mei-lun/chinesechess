@@ -193,7 +193,7 @@ bool chinesechess::TryMovePiece(qint32 abx, qint32 aby, qint32 bx, qint32 by, qi
 移动棋子的时候, 如果目标位置没有棋子那么直接赋值
 如果目标位置有棋子那么首先把目标位置的棋子置为死亡,然后再对目标位置赋值
 */
-bool chinesechess::MovePiece(qint32 abx, qint32 aby, qint32 x, qint32 y, qint32 &tc)
+bool chinesechess::CheckMovePiece(qint32 abx, qint32 aby, qint32 x, qint32 y, qint32 &tc)
 {
     // 棋盘上的i,j对应棋盘的x, y
     qint32 bx = x, by = y;
@@ -276,7 +276,7 @@ bool chinesechess::SelectMoveEvent(qint32 px, qint32 py)
         mStep.push_back(new PieceMoveStep(QPoint(abx, aby), QPoint(x, y), chess_board[x][y]));
         // 如果移动失败了,则需要判断是谁被将军了,如果自己移动自己被将军则需要回退,如果自己移动,对方将军则正常进行走棋,让对方解棋
         qint32 tc = 0;
-        if(!MovePiece(abx, aby, x, y, tc)){
+        if(!CheckMovePiece(abx, aby, x, y, tc)){
             // 我走棋我被对方将军了,则回退重新走棋
             if(curRole != (qint32)(tc/10)){
                 // 取到栈顶的步骤,进行强制回退操作
@@ -300,10 +300,7 @@ bool chinesechess::isNetworkMode()
 void chinesechess::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton)
-    {   
-        chessRobot* crb = new chessRobot();
-        crb->setChessBoardArray(chess_board);
-        crb->searchMain(1);
+    {
         qint32 px = event->x(), py = event->y() - menuHeight;
         // 如果棋盘是反向的则需要翻转坐标
         if(!BOARD_FORWARD){
@@ -353,19 +350,19 @@ void chinesechess::AddWindowModule()
     robotMenu = menuBar()->addMenu(tr("&人机"));
     redBot = new QAction(tr("&红方人机托管"), this);
     connect(redBot, &QAction::triggered, this, &chinesechess::menuActionRedBot);
-    chessMenu->addAction(redBot);
+    robotMenu->addAction(redBot);
     blackBot = new QAction(tr("&黑方人机托管"), this);
     connect(blackBot, &QAction::triggered, this, &chinesechess::menuActionBlackBot);
-    chessMenu->addAction(blackBot);
+    robotMenu->addAction(blackBot);
 }
 
 // 运行人机线程
 void chinesechess::runRebotThread(qint32 roleColor)
 {
     // 把当前的盘面传给人机引擎，人机引擎返回最佳走法之后进行下棋
-    auto func = [&](){
+    auto func = [&](qint32 roleColor){
         // 人机需要不停的思考如何下棋
-        while (true) {
+        while ((roleColor==1&&redRobotStatus) || (roleColor==2&&blackRobotStatus)) {
             auto lastStep = mStep.back();
             // 判断现在该哪个颜色的走棋,如果要区分角色,那么就要判断当前网络角色是什么颜色的
             qint32 lastRole = (qint32)(lastStep->chessNum/10);
@@ -375,29 +372,44 @@ void chinesechess::runRebotThread(qint32 roleColor)
                 robot->setChessBoardArray(chess_board);
                 MoveNode bestMove = robot->searchMain(roleColor);
                 qint32 tc = 0;
+                qint32 bx = bestMove.beginPos.first, by = bestMove.beginPos.second;
+                qint32 ex = bestMove.endPos.first, ey = bestMove.endPos.second;
                 // AI计算出来的走法应该是一定能走的，如果不能走直接报错
-                if(!MovePiece(bestMove.beginPos.first, bestMove.beginPos.second, bestMove.endPos.first, bestMove.endPos.second, tc)){
+                if(!TryMovePiece(bx, by, ex, ey, tc)){
                     qDebug()<<"AI move error";
                     return;
                 }
+                // 将走成功的棋加入步骤记录器
+                mStep.push_back(new PieceMoveStep(QPoint(bx, by), QPoint(ex, ey), chess_board[ex][ey]));
             }
+            chessPieces->update(); // 更新画布
             //每下一步棋停两秒等待一下
             Sleep(2000);
         }
     };
-    std::thread robotthread(func);
+    std::thread robotthread(func, roleColor);
     // 从主线程中分离出来，自行执行
     robotthread.detach();
 }
 
 void chinesechess::menuActionRedBot()
 {
-
+    if(!redRobotStatus){
+        runRebotThread(1);
+        redRobotStatus = true;
+    }else{
+        redRobotStatus = false;
+    }
 }
 
 void chinesechess::menuActionBlackBot()
 {
-    
+    if(!blackRobotStatus){
+        runRebotThread(2);
+        blackRobotStatus = true;
+    }else{
+        blackRobotStatus = false;
+    }
 }
 
 void chinesechess::InitServer()
