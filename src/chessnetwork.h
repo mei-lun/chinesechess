@@ -25,7 +25,7 @@ public:
         recvMsg.push_back(t);
         // 有消息过来就要通知上层来读
         func(EVENT_TYPE::NETWORK_RECEIVE_NEW_MESSAGE);
-        // qDebug()<<"form server: "<<recvMsg.back().data();
+        qDebug()<<"form server: "<<recvMsg.back().data();
     }
     void GetMsg(QByteArray &msg){
         if(recvMsg.empty()){
@@ -36,6 +36,7 @@ public:
         recvMsg.pop_front();
     }
     bool SendMsg(QByteArray msg){
+        qDebug()<<"send to server: "<<msg.data();
        this->write(msg);
         // 等待数据全部写完
         //this->waitForBytesWritten();

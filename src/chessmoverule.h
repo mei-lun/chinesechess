@@ -153,6 +153,13 @@ public:
     }
 };
 
+class SearchInfo {
+public:
+    qint32 redMaxDeep=4;        //红棋最大搜索深度
+    qint32 blackMaxDeep=4;      //黑棋最大搜索深度
+    qint32 maxSearchTime=60;    //单步最长搜索时间(秒)
+};
+
 // 当前棋盘数组的方向 1表示标准的红上黑下, 0表示黑上红下
 static qint32 BOARD_FORWARD = 1;
 

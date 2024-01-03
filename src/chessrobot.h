@@ -4,13 +4,7 @@
 #include <QPoint>
 #include <qalgorithms.h>
 #include "chessmoverule.h"
-// struct HistoryTable{
-//     MoveNode node;
-//     qint32 val = 0;
-//     HistoryTable(MoveNode n, qint32 v){
-//         node = n, val = v;
-//     }
-// };
+
 static QMap<MoveNode, qint32> bestMovePos;
 
 static MoveNode mvResult;
@@ -135,7 +129,7 @@ public:
         return mvBest.score;
     }
     // 传入参数当前是该谁下棋的
-    MoveNode searchMain(qint32 curRole)
+    MoveNode searchMain(qint32 curRole, SearchInfo searchinfo)
     {
         // 当前盘面的分数,如果分数达到了上限或者下限则是有杀棋
         qint32 score = 0;
@@ -145,15 +139,17 @@ public:
         ndistance = 0;
         // 避免搜索时间过长
         qint32 t = clock();
+        qint32 maxDeep = curRole==1? searchinfo.redMaxDeep:searchinfo.blackMaxDeep;
+        qint32 maxSearchTime = searchinfo.maxSearchTime;
         // 定义最大的搜索深度
-        for(qint32 i = 1; i <= 4; i++){
+        for(qint32 i = 1; i <= maxDeep; i++){
             // 需要有一个变量记录从当前盘面开始记录的步骤每次进入时重新计算
             qint32 qval = 0;
             qval = searchFull(-10000, 10000, i, curRole);
             if(qval > 9900 || qval < -9900) break;
-            // 如果超过5秒就不再继续往下搜了
-            // if(clock() - t > 1000 * 5) break;
-            qDebug()<<"qval: "<<qval;
+            // 如果超过设定时间就不再继续往下搜了
+            if(clock() - t > 1000 * maxSearchTime) break;
+            qDebug()<<(curRole==1?'R':'B')<<"当前盘面优分数 qval: "<<qval;
         }
         // 玩家当前搜索出来的最佳走法
         qDebug()<<(curRole==1?'R':'B')<< " best move::begin: "<< mvResult.beginPos.first<<" "<<mvResult.beginPos.second<<" end: "<< mvResult.endPos.first<<" "<<mvResult.endPos.second;

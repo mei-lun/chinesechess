@@ -101,11 +101,13 @@ void chinesechess::InitEnv()
     }
     addrport.addr = settings.value("addr").toString();
     addrport.port =  settings.value("port").toInt();
+    searchinfo.redMaxDeep = settings.value("redMaxDeep").toInt();;
+    searchinfo.blackMaxDeep = settings.value("blackMaxDeep").toInt();
+    searchinfo.maxSearchTime = settings.value("maxSearchTime").toInt();
 }
 
 void chinesechess::SelectPiece(qint32 x, qint32 y)
 {
-    qDebug()<<"tick left "<<x<<" "<<y;
     if(chess_board[x][y])
     {
         Piece* p = pieceMp[SELECT_MAP_ID].curPiece;
@@ -370,7 +372,7 @@ void chinesechess::runRebotThread(qint32 roleColor)
             if(lastRole != roleColor) {
                 chessRobot* robot = new chessRobot();
                 robot->setChessBoardArray(chess_board);
-                MoveNode bestMove = robot->searchMain(roleColor);
+                MoveNode bestMove = robot->searchMain(roleColor, searchinfo);
                 qint32 tc = 0;
                 qint32 bx = bestMove.beginPos.first, by = bestMove.beginPos.second;
                 qint32 ex = bestMove.endPos.first, ey = bestMove.endPos.second;
@@ -459,9 +461,10 @@ void chinesechess::unPackSendData(QByteArray &data)
     // pieceMp
     qint32 bpMpSize = 0;
     stream>>bpMpSize;
+    qint32 k; PieceNode pn;
     for(qint32 i = 0; i < bpMpSize; i++){
-        qint32 k;
-        stream>> k >> pieceMp[k];
+        stream>> k >> pn;
+        pieceMp[k] = pn;
     }
 
     // mStep

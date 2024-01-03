@@ -97,6 +97,7 @@ public:
     qint32 curNetRole = -1;
     bool redRobotStatus = false;
     bool blackRobotStatus = false;
+    SearchInfo searchinfo;
 
 private:
     Ui_chinesechess* ui;
